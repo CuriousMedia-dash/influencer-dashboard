@@ -1,0 +1,94 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+@import "tailwindcss";
+
+:root{
+  --ink:#10243E;
+  --ink2:#5B7390;
+  --ink3:#8FA3BC;
+  --bg:#F4F8FC;
+  --bg-page:#E7F0FA;
+  --panel:#FFFFFF;
+  --up:#EAF2FA;
+  --ln:#D7E6F2;
+  --am:#1E6FE0;
+}
+
+/* Dark mode — same tokens, inverted palette. Toggled via
+   document.documentElement[data-theme] from ThemeContext. */
+[data-theme="dark"]{
+  --ink:#EAF1FB;
+  --ink2:#A9BBD4;
+  --ink3:#71879F;
+  --bg:#0F1B2C;
+  --bg-page:#0A1420;
+  --panel:#152232;
+  --up:#1B2C40;
+  --ln:#2A3F58;
+  --am:#4C93F5;
+}
+
+body{
+  background:var(--bg-page);
+  margin:0;
+  font-family:Inter,sans-serif;
+  transition:background-color .15s ease;
+}
+
+/* Dual-handle follower range slider thumbs — ported from approved HTML's
+   .rs input[type=range]::-webkit-slider-thumb / ::-moz-range-thumb rules. */
+.range-thumb::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  pointer-events:auto;
+  width:15px;
+  height:15px;
+  border-radius:50%;
+  background:var(--am);
+  border:2px solid var(--panel);
+  cursor:pointer;
+  margin-top:5px;
+  box-shadow:0 1px 3px rgba(16,36,62,.25);
+}
+.range-thumb::-moz-range-thumb{
+  pointer-events:auto;
+  width:15px;
+  height:15px;
+  border-radius:50%;
+  background:var(--am);
+  border:2px solid var(--panel);
+  cursor:pointer;
+}
+.range-thumb::-moz-range-track{
+  background:none;
+}
+
+/* Shared text input style for campaign forms — mirrors approved HTML's
+   .ep input / .ep textarea field styling. */
+.ep-text-input{
+  width:100%;
+  background:var(--up);
+  border:1px solid var(--ln);
+  color:var(--ink);
+  border-radius:7px;
+  padding:8px 10px;
+  font-size:12px;
+  font-family:Inter,sans-serif;
+  outline:none;
+}
+.ep-text-input:focus{
+  border-color:var(--am);
+}
+
+/* Pulse status dot — ported from approved HTML's .pulse / @keyframes pw */
+@keyframes pw{
+  0%{box-shadow:0 0 0 0 rgba(30,111,224,.5)}
+  70%{box-shadow:0 0 0 6px rgba(30,111,224,0)}
+  100%{box-shadow:0 0 0 0 rgba(30,111,224,0)}
+}
+.pulse-dot{
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:var(--am);
+  animation:pw 2.4s infinite;
+}
