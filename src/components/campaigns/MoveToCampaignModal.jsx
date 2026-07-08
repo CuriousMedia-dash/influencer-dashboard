@@ -25,11 +25,11 @@ export default function MoveToCampaignModal({ open, onClose, creatorIds, onDone 
     onClose();
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (mode === "new") {
       if (!newName.trim()) return;
-      const id = createCampaign({ name: newName.trim() });
-      addCreatorsToCampaign(id, creatorIds);
+      const id = await createCampaign({ name: newName.trim() });
+      await addCreatorsToCampaign(id, creatorIds);
       showToast(`${creatorIds.length} creator(s) added to "${newName.trim()}"`, true);
       reset();
       onDone?.();

@@ -32,10 +32,10 @@ export default function CreateCampaignModal({ open, onClose }) {
     onClose();
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
-    const id = createCampaign({
+    const id = await createCampaign({
       ...form,
       budget: Number(form.budget) || 0,
     });

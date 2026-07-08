@@ -1,19 +1,20 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { CreatorsContext } from "./creatorsContextDef";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../hooks/useAuth";
 import {
   getSavedSheetLink,
   saveSheetLink,
   clearSavedSheetLink,
   syncFromSheetUrl,
 } from "../utils/sheetSync";
+import { dedupeKey } from "../utils/csvImport";
 
 // Local cache of the creators list, so a reload shows the last-known data
-// immediately instead of a blank table while the background sync runs.
-// The linked Google Sheet (if any) is still the source of truth — this is
-// only a fast-paint cache, kept in sync every time `creators` changes.
+// immediately instead of a blank table while Supabase loads. Supabase is
+// the real, shared source of truth now — this is purely a fast-paint cache.
 const CREATORS_CACHE_KEY = "cm_creators_cache";
 
-// Anywhere in 5-10s per the original design — 7s splits the difference.
 const AUTO_SYNC_INTERVAL_MS = 7000;
 
 function loadCachedCreators() {
@@ -26,12 +27,64 @@ function loadCachedCreators() {
   }
 }
 
+const CREATOR_FIELD_MAP = {
+  name: "name",
+  phone: "phone",
+  email: "email",
+  platform: "platform",
+  profileLink: "profile_link",
+  followers: "followers",
+  gender: "gender",
+  category: "category",
+  language: "language",
+  tier: "tier",
+  remark: "remark",
+  quit: "quit",
+  commercial: "commercial",
+};
+
+function creatorFromRow(row) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    phone: row.phone || "",
+    email: row.email || "",
+    platform: row.platform || "",
+    profileLink: row.profile_link || "",
+    followers: row.followers || 0,
+    gender: row.gender || "",
+    category: row.category || "",
+    language: row.language || "",
+    tier: row.tier || "",
+    remark: row.remark || "",
+    quit: row.quit || false,
+    commercial: row.commercial ?? "",
+  };
+}
+
+function toCreatorColumns(fields) {
+  const out = {};
+  Object.entries(fields).forEach(([k, v]) => {
+    const col = CREATOR_FIELD_MAP[k];
+    if (col) out[col] = v;
+  });
+  return out;
+}
+
+// Only these base fields (never remark/quit/commercial — the fields
+// edited inside the app) get pushed during a sheet sync, so a sync never
+// overwrites something someone typed in the CRM itself.
+const SHEET_SYNCED_FIELDS = [
+  "name", "phone", "email", "platform", "profileLink",
+  "followers", "gender", "category", "language", "tier",
+];
+
 export function CreatorsProvider({ children }) {
+  const { user } = useAuth();
   const [creators, setCreators] = useState(() => loadCachedCreators());
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [loading, setLoading] = useState(true);
 
-  // ── Linked-sheet sync state, shared by the header status pill, the
-  // import/link modal, and the silent background auto-sync below. ──
   const [sheetLink, setSheetLink] = useState(() => getSavedSheetLink());
   const [syncStatus, setSyncStatus] = useState(() =>
     getSavedSheetLink()?.url ? "idle" : "not_connected"
@@ -44,20 +97,46 @@ export function CreatorsProvider({ children }) {
     creatorsRef.current = creators;
   }, [creators]);
 
-  // Keep the fast-paint cache fresh.
   useEffect(() => {
     try {
       localStorage.setItem(CREATORS_CACHE_KEY, JSON.stringify(creators));
     } catch {
-      // Ignore quota/availability errors (e.g. private browsing) — the
-      // in-memory state still works fine for the current session.
+      // Ignore quota/availability errors — in-memory state still works.
     }
   }, [creators]);
+
+  // Loads the real, shared list from Supabase — this is what makes an
+  // edit one teammate makes visible to everyone else.
+  const loadFromSupabase = useCallback(async () => {
+    const { data, error } = await supabase.from("creators").select("*");
+    if (error) {
+      console.error("Failed to load creators:", error.message);
+      return;
+    }
+    setCreators((data || []).map(creatorFromRow));
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    loadFromSupabase().finally(() => setLoading(false));
+  }, [user, loadFromSupabase]);
 
   const updateCreatorField = useCallback((id, field, value) => {
     setCreators((prev) =>
       prev.map((c) => (c.id === id ? { ...c, [field]: value } : c))
     );
+    const col = CREATOR_FIELD_MAP[field];
+    if (!col) return;
+    supabase
+      .from("creators")
+      .update({ [col]: value })
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to save creator change:", error.message);
+      });
   }, []);
 
   const deleteCreators = useCallback((ids) => {
@@ -68,6 +147,13 @@ export function CreatorsProvider({ children }) {
       idSet.forEach((id) => next.delete(id));
       return next;
     });
+    supabase
+      .from("creators")
+      .delete()
+      .in("id", ids)
+      .then(({ error }) => {
+        if (error) console.error("Failed to delete creators:", error.message);
+      });
   }, []);
 
   const deleteCreator = useCallback(
@@ -107,31 +193,57 @@ export function CreatorsProvider({ children }) {
     [creators, selectedIds]
   );
 
-  // Single entry point for pulling from a linked sheet — used for the very
-  // first sync when the app opens, the silent background refresh, and the
-  // manual "Connect & sync" / "Sync now" actions in the import modal, so
-  // they all share identical behavior and update the same shared status.
-  const syncNow = useCallback(async (rawUrl, { mirror = false } = {}) => {
-    setSyncStatus("syncing");
-    try {
-      const { merged, added, updated, removed, rowErrors } = await syncFromSheetUrl(
-        rawUrl,
-        creatorsRef.current,
-        { mirror }
+  // Pushes the sheet-owned fields for every creator in `rows` into
+  // Supabase, matched by the same name+phone+platform key the sheet sync
+  // already uses internally. Never touches remark/quit/commercial, so an
+  // in-app edit always survives the next sync.
+  const pushBaseFieldsToSupabase = useCallback(async (rows) => {
+    const payload = rows.map((r) => {
+      const cols = toCreatorColumns(
+        Object.fromEntries(SHEET_SYNCED_FIELDS.map((k) => [k, r[k]]))
       );
-      setCreators(merged);
-      const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
-      saveSheetLink(record);
-      setSheetLink(record);
-      setSyncStatus("synced");
-      setSyncError("");
-      return { added, updated, removed, rowErrors };
-    } catch (err) {
-      setSyncStatus("error");
-      setSyncError(err?.message || "Something went wrong while syncing.");
-      throw err;
+      return { ...cols, dedupe_key: dedupeKey(r) };
+    });
+    if (payload.length === 0) return;
+    const { error } = await supabase
+      .from("creators")
+      .upsert(payload, { onConflict: "dedupe_key" });
+    if (error) {
+      console.error("Failed to save synced creators:", error.message);
     }
   }, []);
+
+  // Single entry point for pulling from a linked sheet — used for the very
+  // first sync when the app opens, the silent background refresh, and the
+  // manual "Connect & sync" / "Sync now" actions in the import modal.
+  const syncNow = useCallback(
+    async (rawUrl, { mirror = false } = {}) => {
+      setSyncStatus("syncing");
+      try {
+        const { merged, added, updated, removed, rowErrors } = await syncFromSheetUrl(
+          rawUrl,
+          creatorsRef.current,
+          { mirror }
+        );
+        await pushBaseFieldsToSupabase(merged);
+        // Re-load from Supabase so every row carries its real database id
+        // and whatever remark/quit/commercial already existed for it,
+        // instead of trusting the local merge's temporary ids.
+        await loadFromSupabase();
+        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
+        saveSheetLink(record);
+        setSheetLink(record);
+        setSyncStatus("synced");
+        setSyncError("");
+        return { added, updated, removed, rowErrors };
+      } catch (err) {
+        setSyncStatus("error");
+        setSyncError(err?.message || "Something went wrong while syncing.");
+        throw err;
+      }
+    },
+    [pushBaseFieldsToSupabase, loadFromSupabase]
+  );
 
   const unlinkSheet = useCallback(() => {
     clearSavedSheetLink();
@@ -149,11 +261,13 @@ export function CreatorsProvider({ children }) {
     });
   }, []);
 
-  // The moment the app opens: if a sheet is linked, sync immediately (not
-  // on the next 7s tick), then keep quietly refreshing in the background.
-  // Background syncs never surface a toast/message — the header status
-  // pill reflects state instead — only the manual "Sync now" button does.
+  // The moment the app opens (and someone's logged in): if a sheet is
+  // linked, sync immediately, then keep quietly refreshing in the
+  // background. Background syncs never surface a toast — only the manual
+  // "Sync now" button does.
   useEffect(() => {
+    if (!user) return;
+
     async function backgroundSync() {
       const linked = getSavedSheetLink();
       if (!linked?.url || syncingRef.current) return;
@@ -171,12 +285,13 @@ export function CreatorsProvider({ children }) {
     backgroundSync();
     const interval = setInterval(backgroundSync, AUTO_SYNC_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [syncNow]);
+  }, [syncNow, user]);
 
   const value = useMemo(
     () => ({
       creators,
       setCreators,
+      loading,
       updateCreatorField,
       deleteCreator,
       deleteCreators,
@@ -195,6 +310,7 @@ export function CreatorsProvider({ children }) {
     }),
     [
       creators,
+      loading,
       updateCreatorField,
       deleteCreator,
       deleteCreators,

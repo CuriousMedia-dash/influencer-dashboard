@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, LogOut } from "lucide-react";
 import { useCreators } from "../../hooks/useCreators";
 import { useTheme } from "../../hooks/useTheme";
+import { useAuth } from "../../hooks/useAuth";
 import { timeAgo } from "../../utils/format";
 
 function statusPillProps(syncStatus, lastSyncedAt) {
@@ -24,6 +25,7 @@ function statusPillProps(syncStatus, lastSyncedAt) {
 export default function Header({ onGearClick }) {
   const { syncStatus, sheetLink } = useCreators();
   const { theme, toggleTheme } = useTheme();
+  const { user, signOut } = useAuth();
   // Re-render every 30s so "Synced N minutes ago" stays roughly current.
   const [, forceTick] = useState(0);
   useEffect(() => {
@@ -119,6 +121,27 @@ export default function Header({ onGearClick }) {
           >
             ⚙
           </button>
+
+          {user && (
+            <button
+              type="button"
+              onClick={signOut}
+              title={`Signed in as ${user.email} — click to sign out`}
+              aria-label="Sign out"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+                e.currentTarget.style.color = "#E0524B";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+                e.currentTarget.style.color = "var(--ink2)";
+              }}
+            >
+              <LogOut size={15} />
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -225,7 +225,7 @@ Found headers: ${headers.join(", ")}`,
  * separate entries, while re-importing the same person+platform twice is
  * caught as a duplicate.
  */
-function dedupeKey(row) {
+export function dedupeKey(row) {
   const normPhone = normalisePhone(row.phone);
   const normName = normaliseName(row.name);
   const platform = (row.platform || "").trim().toLowerCase();
