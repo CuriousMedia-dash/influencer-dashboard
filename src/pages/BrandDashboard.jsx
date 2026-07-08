@@ -1,34 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { decodeShareToken } from "../utils/shareLink";
+import { supabase } from "../lib/supabaseClient";
 import { fmt, hex2rgba, isUrl } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download } from "lucide-react";
-
-// Brand's own edits (prices, remarks, their own "locked" toggle, and the
-// top summary fields) are stored in *their* browser only, keyed by this
-// share token — there is no backend yet, so none of this syncs back to
-// the agency's copy of the campaign, and nothing the agency changes later
-// overwrites what the brand has already typed in here. Opening the same
-// link again on the same device/browser restores these edits.
-function storageKey(token) {
-  return `cm_brand_dash_${token}`;
-}
-
-function loadBrandEdits(token) {
-  try {
-    const raw = localStorage.getItem(storageKey(token));
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+import { Lock, Unlock, Sun, Moon, Download, Plus } from "lucide-react";
 
 // The brand dashboard's light/dark toggle is entirely its own — separate
-// from the main app's theme — so a brand viewer's preference here never
-// depends on (or affects) anyone else's.
+// from the main app's theme.
 const BRAND_THEME_KEY = "cm_brand_theme";
 
 function loadBrandTheme() {
@@ -44,23 +23,13 @@ function loadBrandTheme() {
   return "light";
 }
 
-function fmtDate(d) {
-  if (!d) return "\u2014";
-  return new Date(d).toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
 function parseAmount(v) {
   if (v == null || v === "") return 0;
   const n = Number(String(v).replace(/,/g, ""));
   return isNaN(n) ? 0 : n;
 }
 
-// Slab card used for the top summary row. Renders as a plain input when
-// editable, or static text when it's a computed/derived value.
+// Slab card used for the top summary row.
 function SlabCard({ label, children, editable, value, onChange, type = "text", placeholder }) {
   return (
     <div
@@ -92,7 +61,6 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
 }
 
 // Small anchored popover for editing Locked Cost + Reimbursement together.
-// Positions itself under the trigger button, closes on outside click or Escape.
 function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onClose }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const panelRef = useRef(null);
@@ -150,8 +118,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
         <input
           autoFocus
           type="text"
-          value={lockedCost}
-          onChange={(e) => onChange({ lockedCost: e.target.value })}
+          value={lockedCost ?? ""}
+          onChange={(e) => onChange("brandLockedCost", e.target.value)}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -165,8 +133,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <input
           type="text"
-          value={reimbursement}
-          onChange={(e) => onChange({ reimbursement: e.target.value })}
+          value={reimbursement ?? ""}
+          onChange={(e) => onChange("brandReimbursement", e.target.value)}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -190,11 +158,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
   );
 }
 
-// The visible cell matches the same plain-input look as Counter Cost /
-// Final Cost right next to it — same box shape, same ₹ prefix — so it
-// doesn't stand out as a different kind of control. It only shows the
-// Locked Cost value; the total (locked cost + reimbursement) lives inside
-// the popover only, never in the cell itself.
+// The visible cell shows only the Locked Cost value; Reimbursement + Total
+// live inside the popover, opened by clicking.
 function LockedCostCell({ lockedCost, reimbursement, onChange }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
@@ -230,24 +195,34 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
   );
 }
 
-
 export default function BrandDashboard() {
-  const { token } = useParams();
-  return <BrandDashboardView key={token} token={token} />;
+  const { token: campaignId } = useParams();
+  return <BrandDashboardView key={campaignId} campaignId={campaignId} />;
 }
 
-function BrandDashboardView({ token }) {
-  const payload = useMemo(() => decodeShareToken(token), [token]);
-  const [edits, setEdits] = useState(() => loadBrandEdits(token));
+function BrandDashboardView({ campaignId }) {
+  const [data, setData] = useState(undefined); // undefined = loading, null = not found
   const [theme, setTheme] = useState(loadBrandTheme);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(storageKey(token), JSON.stringify(edits));
-    } catch {
-      // Ignore quota/availability errors — edits still work for this session.
+    let cancelled = false;
+    async function load() {
+      const { data: result, error } = await supabase.rpc("get_brand_dashboard", {
+        p_campaign_id: campaignId,
+      });
+      if (cancelled) return;
+      if (error || !result || !result.campaign) {
+        console.error("Failed to load brand dashboard:", error?.message);
+        setData(null);
+        return;
+      }
+      setData(result);
     }
-  }, [edits, token]);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignId]);
 
   useEffect(() => {
     try {
@@ -257,62 +232,65 @@ function BrandDashboardView({ token }) {
     }
   }, [theme]);
 
-  if (!payload) {
+  // Fires the write immediately in the background; local state already
+  // reflects the change the instant someone types, so typing never waits
+  // on the network.
+  function updateLinkField(creatorId, field, value) {
+    setData((prev) => ({
+      ...prev,
+      rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, [field]: value } : r)),
+    }));
+    supabase
+      .rpc("update_brand_dashboard_link", {
+        p_campaign_id: campaignId,
+        p_creator_id: creatorId,
+        p_field: field,
+        p_value: String(value),
+      })
+      .then(({ error }) => {
+        if (error) console.error("Failed to save brand dashboard change:", error.message);
+      });
+  }
+
+  function updateMetaField(field, value) {
+    setData((prev) => ({ ...prev, campaign: { ...prev.campaign, [field]: value } }));
+    supabase
+      .rpc("update_brand_dashboard_meta", {
+        p_campaign_id: campaignId,
+        p_field: field,
+        p_value: String(value),
+      })
+      .then(({ error }) => {
+        if (error) console.error("Failed to save brand dashboard change:", error.message);
+      });
+  }
+
+  if (data === undefined) {
     return (
-      <div data-theme={theme} className="flex min-h-screen items-center justify-center p-6" style={{ background: "var(--bg-page)" }}>
-        <div
-          className="max-w-sm rounded-[14px] border p-6 text-center"
-          style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
-        >
-          <h1 className="mb-1.5 text-lg font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)" }}>
+      <div className="flex min-h-screen items-center justify-center text-sm" style={{ background: "#E7F0FA", color: "#5B7390" }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6" style={{ background: "#E7F0FA" }}>
+        <div className="max-w-sm rounded-[14px] border p-6 text-center" style={{ background: "#fff", borderColor: "#D9E4F2" }}>
+          <h1 className="mb-1.5 text-lg font-semibold" style={{ fontFamily: "Fraunces, serif" }}>
             Link not valid
           </h1>
-          <p className="text-sm" style={{ color: "var(--ink2)" }}>
-            This dashboard link is broken or incomplete. Ask for a fresh link
-            from the campaign owner.
+          <p className="text-sm" style={{ color: "#5B6B82" }}>
+            This dashboard link is broken or the campaign no longer exists. Ask for a fresh link from the campaign owner.
           </p>
         </div>
       </div>
     );
   }
 
-  function edit(creatorId) {
-    const row = payload.rows.find((r) => r.creatorId === creatorId);
-    const defaults = {
-      reimbursement: "",
-      brandLocked: false,
-      lockedCost: row?.lp ?? "",
-      counterCost: row?.cc ?? "",
-      finalCost: row?.fc ?? "",
-      remark: row?.remark ?? "",
-      viewership: row?.viewership ?? "",
-    };
-    return { ...defaults, ...edits[creatorId] };
-  }
-
-  function updateEdit(creatorId, fields) {
-    setEdits((prev) => ({
-      ...prev,
-      [creatorId]: { ...edit(creatorId), ...fields },
-    }));
-  }
-
-  const meta = {
-    client: payload.client,
-    budget: payload.budget,
-    timelineStart: payload.timelineStart,
-    timelineEnd: payload.timelineEnd,
-    poc: payload.poc,
-    ...edits.__meta,
-  };
-
-  function updateMeta(fields) {
-    setEdits((prev) => ({ ...prev, __meta: { ...meta, ...fields } }));
-  }
-
-  const linksPosted = payload.rows.filter((r) => r.liveLink).length;
-  const linksExpected = Number(payload.linksExpected) || payload.rows.length;
-  const lockedProfilesCount = payload.rows.filter((r) => edit(r.creatorId).brandLocked).length;
+  const { campaign, rows } = data;
+  const linksPosted = rows.filter((r) => r.liveLink).length;
+  const lockedProfilesCount = rows.filter((r) => r.brandLocked).length;
 
   return (
     <div data-theme={theme} className="min-h-screen p-6" style={{ background: "var(--bg-page)" }}>
@@ -340,7 +318,7 @@ function BrandDashboardView({ token }) {
               className="mt-0.5 text-[11px] uppercase tracking-[.13em]"
               style={{ color: "var(--ink3)", fontFamily: "'JetBrains Mono', monospace" }}
             >
-              {payload.generatedAt ? fmtDate(payload.generatedAt) : ""}
+              Live {"\u2014"} always shows the latest data
             </div>
           </div>
 
@@ -356,12 +334,7 @@ function BrandDashboardView({ token }) {
             </button>
             <button
               type="button"
-              onClick={() =>
-                downloadCsv(
-                  `${payload.name || "brand-dashboard"}.csv`,
-                  brandDashboardToCsv(payload, edit)
-                )
-              }
+              onClick={() => downloadCsv(`${campaign.name || "brand-dashboard"}.csv`, brandDashboardToCsv(rows))}
               className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors"
               style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
             >
@@ -375,50 +348,57 @@ function BrandDashboardView({ token }) {
           className="mb-5 text-[28px] font-semibold"
           style={{ fontFamily: "Fraunces, serif", color: "var(--ink)", letterSpacing: "-0.01em" }}
         >
-          {payload.name}
+          {campaign.name}
         </h1>
 
-        {/* Top slab — editable except the two computed metrics */}
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <SlabCard label="Client" editable value={meta.client} onChange={(v) => updateMeta({ client: v })} placeholder="—" />
+          <SlabCard
+            label="Client"
+            editable
+            value={campaign.brandClient}
+            onChange={(v) => updateMetaField("brandClient", v)}
+            placeholder={campaign.client || "\u2014"}
+          />
 
-          <SlabCard label="Budget (₹)" editable type="number" value={meta.budget} onChange={(v) => updateMeta({ budget: v })} placeholder="0" />
+          <SlabCard
+            label={"Budget (\u20b9)"}
+            editable
+            type="number"
+            value={campaign.brandBudget}
+            onChange={(v) => updateMetaField("brandBudget", v)}
+            placeholder="0"
+          />
 
           <SlabCard
             label="Timeline"
             editable
             type="date"
-            value={meta.timelineEnd}
-            onChange={(v) => updateMeta({ timelineEnd: v })}
+            value={campaign.brandTimelineEnd}
+            onChange={(v) => updateMetaField("brandTimelineEnd", v)}
           />
 
           <SlabCard label="Links Posted">
-            {linksPosted}/{linksExpected}
+            {linksPosted}/{rows.length}
           </SlabCard>
 
           <SlabCard label="Locked Profiles">{lockedProfilesCount}</SlabCard>
 
-          <SlabCard label="Owner / POC" editable value={meta.poc} onChange={(v) => updateMeta({ poc: v })} placeholder="—" />
+          <SlabCard
+            label="Owner / POC"
+            editable
+            value={campaign.brandPoc}
+            onChange={(v) => updateMetaField("brandPoc", v)}
+            placeholder={campaign.poc || "\u2014"}
+          />
         </div>
 
-        <div
-          className="overflow-auto rounded-[13px] border"
-          style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
-        >
+        <div className="overflow-auto rounded-[13px] border" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
           <table className="w-full border-collapse text-sm" style={{ minWidth: 1180 }}>
             <thead>
               <tr>
                 {[
-                  "Creator",
-                  "Followers",
-                  "Locked Cost",
-                  "Counter Cost",
-                  "Final Cost",
-                  "Remarks",
-                  "Locked Status",
-                  "Execution Stage",
-                  "Live Video Link",
-                  "Viewership",
+                  "Creator", "Followers", "Locked Cost", "Counter Cost", "Final Cost",
+                  "Remarks", "Locked Status", "Execution Stage", "Live Video Link", "Viewership",
                 ].map((h) => (
                   <th
                     key={h}
@@ -431,57 +411,50 @@ function BrandDashboardView({ token }) {
               </tr>
             </thead>
             <tbody>
-              {payload.rows.map((row) => {
-                const e = edit(row.creatorId);
+              {rows.map((row) => {
                 const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
 
                 return (
                   <tr key={row.creatorId}>
-                    {/* Creator — not editable */}
                     <td className="whitespace-nowrap border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      {row.link && isUrl(row.link) ? (
+                      {row.profileLink && isUrl(row.profileLink) ? (
                         <a
-                          href={row.link}
+                          href={row.profileLink}
                           target="_blank"
                           rel="noreferrer"
                           title="View profile"
                           className="underline decoration-1 underline-offset-2"
                           style={{ color: "var(--am)" }}
                         >
-                          {row.n}
+                          {row.name}
                         </a>
                       ) : (
-                        <span style={{ color: "var(--ink)" }}>{row.n}</span>
+                        <span style={{ color: "var(--ink)" }}>{row.name}</span>
                       )}
                     </td>
 
-                    {/* Followers — not editable */}
                     <td
                       className="border-b px-4 py-3"
                       style={{ borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
                     >
-                      {fmt(row.f)}
+                      {fmt(row.followers)}
                     </td>
 
-                    {/* Locked Cost — click to open a small popover with
-                        Locked Cost + Reimbursement inside. Nothing but the
-                        total value shows in the cell itself. */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <LockedCostCell
-                        lockedCost={e.lockedCost}
-                        reimbursement={e.reimbursement}
-                        onChange={(fields) => updateEdit(row.creatorId, fields)}
+                        lockedCost={row.brandLockedCost}
+                        reimbursement={row.brandReimbursement}
+                        onChange={(field, value) => updateLinkField(row.creatorId, field, value)}
                       />
                     </td>
 
-                    {/* Counter Cost — editable */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <div className="flex items-center gap-1">
                         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
                         <input
                           type="text"
-                          value={e.counterCost}
-                          onChange={(ev) => updateEdit(row.creatorId, { counterCost: ev.target.value })}
+                          value={row.brandCounterCost ?? ""}
+                          onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", e.target.value)}
                           placeholder="0"
                           className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
                           style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -489,14 +462,13 @@ function BrandDashboardView({ token }) {
                       </div>
                     </td>
 
-                    {/* Final Cost — editable */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <div className="flex items-center gap-1">
                         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
                         <input
                           type="text"
-                          value={e.finalCost}
-                          onChange={(ev) => updateEdit(row.creatorId, { finalCost: ev.target.value })}
+                          value={row.brandFinalCost ?? ""}
+                          onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
                           placeholder="0"
                           className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
                           style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -504,50 +476,42 @@ function BrandDashboardView({ token }) {
                       </div>
                     </td>
 
-                    {/* Remarks — editable, roomy textarea so it isn't cramped */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <textarea
-                        value={e.remark}
-                        onChange={(ev) => updateEdit(row.creatorId, { remark: ev.target.value })}
-                        placeholder="Add a remark…"
+                        value={row.brandRemark ?? ""}
+                        onChange={(e) => updateLinkField(row.creatorId, "brandRemark", e.target.value)}
+                        placeholder={"Add a remark\u2026"}
                         rows={2}
                         className="w-[190px] resize-y rounded-[6px] border px-2 py-1 text-[12px] outline-none"
                         style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)" }}
                       />
                     </td>
 
-                    {/* Locked Status — brand's own toggle, independent of the agency's */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <button
                         type="button"
-                        onClick={() => updateEdit(row.creatorId, { brandLocked: !e.brandLocked })}
+                        onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
                         className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors"
                         style={
-                          e.brandLocked
+                          row.brandLocked
                             ? { borderColor: "#2BAE66", color: "#2BAE66", background: "rgba(43,174,102,.08)" }
                             : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
                         }
                       >
-                        {e.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                        {e.brandLocked ? "Locked" : "Unlocked"}
+                        {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                        {row.brandLocked ? "Locked" : "Unlocked"}
                       </button>
                     </td>
 
-                    {/* Execution Stage — not editable */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <span
                         className="inline-flex whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px]"
-                        style={{
-                          color: stageColor,
-                          borderColor: hex2rgba(stageColor, 0.35),
-                          background: hex2rgba(stageColor, 0.08),
-                        }}
+                        style={{ color: stageColor, borderColor: hex2rgba(stageColor, 0.35), background: hex2rgba(stageColor, 0.08) }}
                       >
                         {row.executionStage}
                       </span>
                     </td>
 
-                    {/* Live Video Link — not editable */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       {row.liveLink && isUrl(row.liveLink) ? (
                         <a
@@ -564,12 +528,11 @@ function BrandDashboardView({ token }) {
                       )}
                     </td>
 
-                    {/* Viewership — editable */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <input
                         type="text"
-                        value={e.viewership}
-                        onChange={(ev) => updateEdit(row.creatorId, { viewership: ev.target.value })}
+                        value={row.brandViewership ?? ""}
+                        onChange={(e) => updateLinkField(row.creatorId, "brandViewership", e.target.value)}
                         placeholder="0"
                         className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
                         style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -581,7 +544,7 @@ function BrandDashboardView({ token }) {
             </tbody>
           </table>
 
-          {payload.rows.length === 0 && (
+          {rows.length === 0 && (
             <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--ink3)" }}>
               No creators in this campaign yet.
             </div>

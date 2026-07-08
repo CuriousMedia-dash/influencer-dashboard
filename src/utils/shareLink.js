@@ -101,3 +101,13 @@ export function buildShareUrl(campaign, getCreatorById) {
   const token = buildShareToken(campaign, getCreatorById);
   return `${window.location.origin}/brand/${token}`;
 }
+
+/**
+ * The live Brand Dashboard link — just the campaign's own id. Unlike the
+ * old snapshot-in-the-link approach above, this always shows current data
+ * (fetched live from the database via a scoped, anonymous-safe function),
+ * and both the brand and the agency can edit through it.
+ */
+export function buildBrandDashboardUrl(campaignId) {
+  return `${window.location.origin}/brand/${campaignId}`;
+}

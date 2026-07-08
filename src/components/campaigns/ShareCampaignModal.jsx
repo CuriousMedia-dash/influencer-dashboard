@@ -1,18 +1,17 @@
 import { useMemo, useState } from "react";
 import { Copy, Check, ExternalLink } from "lucide-react";
 import Modal from "../ui/Modal";
-import { buildShareUrl } from "../../utils/shareLink";
+import { buildBrandDashboardUrl } from "../../utils/shareLink";
 
-export default function ShareCampaignModal({ open, onClose, campaign, getCreatorById }) {
+export default function ShareCampaignModal({ open, onClose, campaign }) {
   const [copied, setCopied] = useState(false);
 
-  // Only rebuild the link while the modal is open, and whenever the
-  // campaign's creator links change (e.g. re-opening after locking a
-  // new price regenerates a fresh snapshot).
+  // The link is just the campaign's own id now — no snapshot to rebuild,
+  // it's the same link every time and always shows live data.
   const shareUrl = useMemo(() => {
     if (!open || !campaign) return "";
-    return buildShareUrl(campaign, getCreatorById);
-  }, [open, campaign, getCreatorById]);
+    return buildBrandDashboardUrl(campaign.id);
+  }, [open, campaign]);
 
   async function handleCopy() {
     try {
@@ -30,7 +29,7 @@ export default function ShareCampaignModal({ open, onClose, campaign, getCreator
       open={open}
       onClose={onClose}
       title="Share brand dashboard"
-      description="This opens a live-looking dashboard link for the brand — creator names, followers, costs, remarks, execution stage, live links & viewership. They can fill in reimbursement cost and their own Locked status, saved in their browser. Editing prices later won't change a link you've already sent — send a fresh link to reflect updates."
+      description="This opens a live dashboard for the brand — creator names, followers, your locked costs, execution stage, and live links. They can fill in their own reimbursement, counter/final cost, remarks, and locked status. Anything either side enters saves immediately and is visible to both — including if you open this same link yourself."
       maxWidth={520}
     >
       <div className="flex items-center gap-2">

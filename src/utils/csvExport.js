@@ -101,44 +101,33 @@ export function downloadCsv(filename, csvString) {
   URL.revokeObjectURL(url);
 }
 
-// Brand Dashboard export — mirrors exactly what's visible in the brand's
-// table (including their own edits: reimbursement, counter/final cost,
-// remarks, their locked toggle, and viewership), so the downloaded file
-// matches what they were looking at on screen.
+// Brand Dashboard export — mirrors exactly what's visible in the live
+// table (both the agency's fields and the brand's own edits), so the
+// downloaded file matches what's on screen at the moment of download.
 const BRAND_DASHBOARD_CSV_COLUMNS = [
-  { key: "n", label: "Creator" },
-  { key: "f", label: "Followers" },
-  { key: "lockedCost", label: "Locked Cost" },
-  { key: "reimbursement", label: "Reimbursement" },
+  { key: "name", label: "Creator" },
+  { key: "followers", label: "Followers" },
+  { key: "brandLockedCost", label: "Locked Cost" },
+  { key: "brandReimbursement", label: "Reimbursement" },
   { key: "total", label: "Total" },
-  { key: "counterCost", label: "Counter Cost" },
-  { key: "finalCost", label: "Final Cost" },
-  { key: "remark", label: "Remarks" },
-  { key: "brandLocked", label: "Locked Status" },
+  { key: "brandCounterCost", label: "Counter Cost" },
+  { key: "brandFinalCost", label: "Final Cost" },
+  { key: "brandRemark", label: "Remarks" },
+  { key: "brandLockedLabel", label: "Locked Status" },
   { key: "executionStage", label: "Execution Stage" },
   { key: "liveLink", label: "Live Video Link" },
-  { key: "viewership", label: "Viewership" },
+  { key: "brandViewership", label: "Viewership" },
 ];
 
-export function brandDashboardToCsv(payload, edit) {
+export function brandDashboardToCsv(rows) {
   const header = BRAND_DASHBOARD_CSV_COLUMNS.map((c) => csvEscape(c.label)).join(",");
-  const lines = payload.rows.map((row) => {
-    const e = edit(row.creatorId);
-    const lockedCost = Number(String(e.lockedCost || "0").replace(/,/g, "")) || 0;
-    const reimbursement = Number(String(e.reimbursement || "0").replace(/,/g, "")) || 0;
+  const lines = rows.map((row) => {
+    const lockedCost = Number(row.brandLockedCost) || 0;
+    const reimbursement = Number(row.brandReimbursement) || 0;
     const values = {
-      n: row.n,
-      f: row.f,
-      lockedCost: e.lockedCost,
-      reimbursement: e.reimbursement,
+      ...row,
       total: lockedCost + reimbursement,
-      counterCost: e.counterCost,
-      finalCost: e.finalCost,
-      remark: e.remark,
-      brandLocked: e.brandLocked ? "Locked" : "Unlocked",
-      executionStage: row.executionStage,
-      liveLink: row.liveLink,
-      viewership: e.viewership,
+      brandLockedLabel: row.brandLocked ? "Locked" : "Unlocked",
     };
     return BRAND_DASHBOARD_CSV_COLUMNS.map((c) => csvEscape(values[c.key])).join(",");
   });

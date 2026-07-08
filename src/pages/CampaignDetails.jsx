@@ -131,7 +131,6 @@ export default function CampaignDetails() {
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         campaign={campaign}
-        getCreatorById={getCreatorById}
       />
 
       <Modal
