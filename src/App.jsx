@@ -13,13 +13,14 @@ import Workspace from "./pages/Workspace";
 import SharedCampaignView from "./pages/SharedCampaignView";
 import BrandDashboard from "./pages/BrandDashboard";
 import Login from "./pages/Login";
+import SetPassword from "./pages/SetPassword";
 
 // Gates the internal app behind a valid Supabase session. The public
 // routes below (/share/:token, /brand/:token) are handled entirely
 // outside this gate, so external brand viewers never see a login screen —
 // only your own team, signing in with a company email, ever hits this.
 function AuthGate({ children }) {
-  const { session, loading } = useAuth();
+  const { session, loading, needsPasswordSetup } = useAuth();
 
   if (loading) {
     return (
@@ -30,6 +31,13 @@ function AuthGate({ children }) {
         Loading…
       </div>
     );
+  }
+
+  // A fresh invite or password-reset link lands here with an active
+  // session but no password set yet — show the setup screen before
+  // anything else, regardless of whether a "real" session exists.
+  if (needsPasswordSetup && session) {
+    return <SetPassword />;
   }
 
   if (!session) {
