@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { decodeShareToken } from "../utils/shareLink";
 import { fmt, hex2rgba, isUrl } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
+import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
 import { Lock, Unlock, Sun, Moon, Download } from "lucide-react";
 
 // Brand's own edits (prices, remarks, their own "locked" toggle, and the
@@ -89,6 +90,146 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
     </div>
   );
 }
+
+// Small anchored popover for editing Locked Cost + Reimbursement together.
+// Positions itself under the trigger button, closes on outside click or Escape.
+function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onClose }) {
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (!anchorRef?.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const pw = 220;
+    let left = rect.left;
+    let top = rect.bottom + 6;
+    if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    if (top + 190 > window.innerHeight) top = rect.top - 196;
+    setPos({ top, left });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape") onClose();
+    }
+    function handleClick(e) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(e.target) &&
+        !e.target.closest(".locked-cost-trigger")
+      ) {
+        onClose();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("click", handleClick);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("click", handleClick);
+    };
+  }, [onClose]);
+
+  const total = parseAmount(lockedCost) + parseAmount(reimbursement);
+
+  return (
+    <div
+      ref={panelRef}
+      className="fixed z-50 w-[220px] rounded-[10px] border p-3 shadow-[0_8px_32px_rgba(16,36,62,.18)]"
+      style={{ top: pos.top, left: pos.left, background: "var(--panel)", borderColor: "var(--ln)" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h4 className="mb-2 text-xs font-semibold" style={{ color: "var(--ink)" }}>
+        Locked Cost
+      </h4>
+
+      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>
+        Locked Cost
+      </label>
+      <div className="mb-2.5 flex items-center gap-1">
+        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+        <input
+          autoFocus
+          type="text"
+          value={lockedCost}
+          onChange={(e) => onChange({ lockedCost: e.target.value })}
+          placeholder="0"
+          className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
+          style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+        />
+      </div>
+
+      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>
+        + Reimbursement
+      </label>
+      <div className="mb-2.5 flex items-center gap-1">
+        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+        <input
+          type="text"
+          value={reimbursement}
+          onChange={(e) => onChange({ reimbursement: e.target.value })}
+          placeholder="0"
+          className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
+          style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+        />
+      </div>
+
+      <div className="mb-3 text-[11.5px] font-semibold" style={{ color: "var(--ink2)" }}>
+        Total: {"\u20b9"}
+        {fmt(total)}
+      </div>
+
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full rounded-[7px] py-[7px] text-xs font-semibold text-white"
+        style={{ background: "var(--am)" }}
+      >
+        Done
+      </button>
+    </div>
+  );
+}
+
+// The visible cell matches the same plain-input look as Counter Cost /
+// Final Cost right next to it — same box shape, same ₹ prefix — so it
+// doesn't stand out as a different kind of control. It only shows the
+// Locked Cost value; the total (locked cost + reimbursement) lives inside
+// the popover only, never in the cell itself.
+function LockedCostCell({ lockedCost, reimbursement, onChange }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef(null);
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Click to edit locked cost & reimbursement"
+        className="locked-cost-trigger flex items-center gap-1 text-left"
+      >
+        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+        <span
+          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
+          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          {fmt(parseAmount(lockedCost))}
+        </span>
+      </button>
+
+      {open && (
+        <LockedCostPopover
+          anchorRef={anchorRef}
+          lockedCost={lockedCost}
+          reimbursement={reimbursement}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
 
 export default function BrandDashboard() {
   const { token } = useParams();
@@ -188,11 +329,19 @@ function BrandDashboardView({ token }) {
 
       <div className="mx-auto max-w-6xl">
         <div className="mb-4 flex items-center justify-between">
-          <div
-            className="text-[11px] uppercase tracking-[.13em]"
-            style={{ color: "var(--ink3)", fontFamily: "'JetBrains Mono', monospace" }}
-          >
-            {payload.generatedAt ? fmtDate(payload.generatedAt) : ""}
+          <div>
+            <div
+              className="text-[13px] font-semibold uppercase tracking-[.1em]"
+              style={{ color: "var(--am)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              Brand Dashboard
+            </div>
+            <div
+              className="mt-0.5 text-[11px] uppercase tracking-[.13em]"
+              style={{ color: "var(--ink3)", fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              {payload.generatedAt ? fmtDate(payload.generatedAt) : ""}
+            </div>
           </div>
 
           <div className="no-print flex items-center gap-2">
@@ -207,12 +356,17 @@ function BrandDashboardView({ token }) {
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() =>
+                downloadCsv(
+                  `${payload.name || "brand-dashboard"}.csv`,
+                  brandDashboardToCsv(payload, edit)
+                )
+              }
               className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors"
               style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
             >
               <Download size={13} />
-              Download PDF
+              Download CSV
             </button>
           </div>
         </div>
@@ -269,7 +423,7 @@ function BrandDashboardView({ token }) {
                   <th
                     key={h}
                     className="whitespace-nowrap border-b px-4 py-3 text-left text-[11px] uppercase tracking-[.06em]"
-                    style={{ borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--bg)" }}
+                    style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--bg)" }}
                   >
                     {h}
                   </th>
@@ -309,40 +463,15 @@ function BrandDashboardView({ token }) {
                       {fmt(row.f)}
                     </td>
 
-                    {/* Locked Cost — editable, independent of the agency's own number */}
+                    {/* Locked Cost — click to open a small popover with
+                        Locked Cost + Reimbursement inside. Nothing but the
+                        total value shows in the cell itself. */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1">
-                          <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                          <input
-                            type="text"
-                            value={e.lockedCost}
-                            onChange={(ev) => updateEdit(row.creatorId, { lockedCost: ev.target.value })}
-                            placeholder="0"
-                            className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] font-semibold outline-none"
-                            style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                          />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="whitespace-nowrap text-[10px]" style={{ color: "var(--ink3)" }}>
-                            + Reimbursement
-                          </span>
-                          <input
-                            type="text"
-                            value={e.reimbursement}
-                            onChange={(ev) => updateEdit(row.creatorId, { reimbursement: ev.target.value })}
-                            placeholder="0"
-                            className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[11px] outline-none"
-                            style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                          />
-                        </div>
-                        {(parseAmount(e.lockedCost) > 0 || parseAmount(e.reimbursement) > 0) && (
-                          <span className="text-[10.5px]" style={{ color: "var(--ink2)" }}>
-                            Total: {"\u20b9"}
-                            {fmt(parseAmount(e.lockedCost) + parseAmount(e.reimbursement))}
-                          </span>
-                        )}
-                      </div>
+                      <LockedCostCell
+                        lockedCost={e.lockedCost}
+                        reimbursement={e.reimbursement}
+                        onChange={(fields) => updateEdit(row.creatorId, fields)}
+                      />
                     </td>
 
                     {/* Counter Cost — editable */}

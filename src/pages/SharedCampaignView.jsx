@@ -50,7 +50,7 @@ export default function SharedCampaignView() {
 
         <h1
           className="mb-5 text-[28px] font-semibold"
-          style={{ fontFamily: "Fraunces, serif", color: "#10243E", letterSpacing: "-0.01em" }}
+          style={{ fontFamily: "Fraunces, serif", color: "#02060c", letterSpacing: "-0.01em" }}
         >
           {payload.name}
         </h1>

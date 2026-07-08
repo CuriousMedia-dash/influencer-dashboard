@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import RangeSlider from "./RangeSlider";
+import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import {
   PLATFORMS,
   GENDERS,
@@ -7,13 +8,6 @@ import {
   TIER_LABELS,
   TIER_RANGE_LABELS,
 } from "../../utils/constants";
-
-const PLATFORM_ICONS = {
-  Instagram: "\ud83d\udcf8",
-  YouTube: "\u25b6",
-  Twitter: "\ud835\udd4f",
-  LinkedIn: "\ud83d\udcbc",
-};
 
 const GENDER_ICONS = {
   Male: "\u2642",
@@ -124,8 +118,8 @@ export default function FilterSidebar({
                   color: on ? "var(--ink)" : "var(--ink2)",
                 }}
               >
-                <span className="text-base">{PLATFORM_ICONS[plat]}</span>
-                {plat}
+                <PlatformIcon platform={plat} size={15} />
+                {platformLabel(plat)}
               </button>
             );
           })}

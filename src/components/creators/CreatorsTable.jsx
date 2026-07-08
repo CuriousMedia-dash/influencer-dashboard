@@ -2,12 +2,12 @@ import { ChevronUp, ChevronDown, Trash2, Flag } from "lucide-react";
 import Badge from "../ui/Badge";
 import TierBadge from "../ui/TierBadge";
 import EditableCell from "../ui/EditableCell";
+import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import { fmt, creatorPlatforms, hex2rgba } from "../../utils/format";
 import {
   LANG_COLORS,
   NICHE_COLORS,
   GENDER_COLORS,
-  PLATFORM_ICONS,
   QUIT_FLAG_COLOR,
 } from "../../utils/constants";
 
@@ -26,7 +26,7 @@ const COLUMNS = [
   { key: "phone", label: "Phone", sortable: false, width: 140 },
   { key: "email", label: "Email", sortable: false, width: 190 },
   { key: "commercial", label: "Commercial", sortable: false, width: 110 },
-  { key: "remark", label: "Remarks", sortable: false, width: 190 },
+  { key: "remark", label: "Remarks", sortable: false, width: 230 },
   { key: "actions", label: "", sortable: false, width: 40 },
 ];
 
@@ -82,7 +82,7 @@ export default function CreatorsTable({
                   style={{
                     background: "var(--up)",
                     borderColor: "var(--ln)",
-                    color: isSorted ? "var(--ink)" : "var(--ink3)",
+                    color: "var(--ink)",
                     width: col.width,
                   }}
                 >
@@ -177,7 +177,7 @@ export default function CreatorsTable({
                     <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
                       {platform ? (
                         <Badge color="#1E6FE0">
-                          {PLATFORM_ICONS[platform.platform] || "\ud83d\udd17"} {platform.platform}
+                          <PlatformIcon platform={platform.platform} size={12} /> {platformLabel(platform.platform)}
                         </Badge>
                       ) : (
                         <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>
@@ -258,7 +258,7 @@ export default function CreatorsTable({
                       className="overflow-visible border-b px-3 py-2"
                       style={{ borderColor: "var(--ln)" }}
                     >
-                      <div className="flex min-w-0 flex-col items-end gap-1">
+                      <div className="flex min-w-0 items-center gap-1.5">
                         <EditableCell
                           value={r.remark}
                           label="Remark"

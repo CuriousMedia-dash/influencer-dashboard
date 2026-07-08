@@ -100,3 +100,47 @@ export function downloadCsv(filename, csvString) {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Brand Dashboard export — mirrors exactly what's visible in the brand's
+// table (including their own edits: reimbursement, counter/final cost,
+// remarks, their locked toggle, and viewership), so the downloaded file
+// matches what they were looking at on screen.
+const BRAND_DASHBOARD_CSV_COLUMNS = [
+  { key: "n", label: "Creator" },
+  { key: "f", label: "Followers" },
+  { key: "lockedCost", label: "Locked Cost" },
+  { key: "reimbursement", label: "Reimbursement" },
+  { key: "total", label: "Total" },
+  { key: "counterCost", label: "Counter Cost" },
+  { key: "finalCost", label: "Final Cost" },
+  { key: "remark", label: "Remarks" },
+  { key: "brandLocked", label: "Locked Status" },
+  { key: "executionStage", label: "Execution Stage" },
+  { key: "liveLink", label: "Live Video Link" },
+  { key: "viewership", label: "Viewership" },
+];
+
+export function brandDashboardToCsv(payload, edit) {
+  const header = BRAND_DASHBOARD_CSV_COLUMNS.map((c) => csvEscape(c.label)).join(",");
+  const lines = payload.rows.map((row) => {
+    const e = edit(row.creatorId);
+    const lockedCost = Number(String(e.lockedCost || "0").replace(/,/g, "")) || 0;
+    const reimbursement = Number(String(e.reimbursement || "0").replace(/,/g, "")) || 0;
+    const values = {
+      n: row.n,
+      f: row.f,
+      lockedCost: e.lockedCost,
+      reimbursement: e.reimbursement,
+      total: lockedCost + reimbursement,
+      counterCost: e.counterCost,
+      finalCost: e.finalCost,
+      remark: e.remark,
+      brandLocked: e.brandLocked ? "Locked" : "Unlocked",
+      executionStage: row.executionStage,
+      liveLink: row.liveLink,
+      viewership: e.viewership,
+    };
+    return BRAND_DASHBOARD_CSV_COLUMNS.map((c) => csvEscape(values[c.key])).join(",");
+  });
+  return [header, ...lines].join("\r\n");
+}

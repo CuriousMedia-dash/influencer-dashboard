@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Lock, Unlock, X, ArrowUpDown, CreditCard, Mail, Pencil, Check, Flag } from "lucide-react";
 import EditableCell from "../ui/EditableCell";
 import EditPopover from "../ui/EditPopover";
+import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import LockConfirmModal from "./LockConfirmModal";
 import PaymentInfoDialog from "./PaymentInfoDialog";
 import { fmt, hex2rgba, groupByPlatform, parseN, summarizePaymentInfo, isUrl } from "../../utils/format";
@@ -13,7 +14,6 @@ import {
   NEGOTIATION_STATUS_COLORS,
   EXECUTION_STAGES,
   EXECUTION_STAGE_COLORS,
-  PLATFORM_ICONS,
   QUIT_FLAG_COLOR,
 } from "../../utils/constants";
 
@@ -47,6 +47,7 @@ const COLS = [
   ["Live Video Link", 120],
   ["Payment Info", 230],
   ["Remark", 200],
+  ["Flag", 70],
   ["", 40],
 ];
 
@@ -253,7 +254,7 @@ export default function CampaignCreatorsTable({
                 <th
                   key={label || "actions"}
                   className="sticky top-0 z-10 whitespace-nowrap border-b px-3 py-2.5 text-left text-[10px] uppercase tracking-[.06em]"
-                  style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink3)", width }}
+                  style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", width }}
                 >
                   {label}
                 </th>
@@ -297,8 +298,8 @@ export default function CampaignCreatorsTable({
                         className="inline-flex items-center gap-1.5 truncate rounded-full border px-2 py-[3px] text-[11px]"
                         style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
                       >
-                        <span>{PLATFORM_ICONS[platform.platform] || "\ud83d\udd17"}</span>
-                        {platform.platform}
+                        <PlatformIcon platform={platform.platform} size={12} />
+                        {platformLabel(platform.platform)}
                       </span>
                     ) : (
                       <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>
@@ -576,35 +577,36 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
-                    <div className="flex min-w-0 flex-col items-end gap-1">
-                      <EditableCell
-                        value={link.remark}
-                        label="Remark"
-                        variant="pill"
-                        onSave={(val) => onUpdateLink(link.creatorId, { remark: val })}
-                      />
-                      <button
-                        type="button"
-                        title={
-                          stageQuit
-                            ? "Execution stage is set to Quit"
-                            : quit
-                            ? "Flagged — click to unflag"
-                            : "Flag this creator"
-                        }
-                        onClick={() => !stageQuit && onUpdateCreatorField(link.creatorId, "quit", !quit)}
-                        disabled={stageQuit}
-                        className="flex h-[20px] w-fit flex-shrink-0 items-center gap-1 rounded-[6px] border px-1.5 transition-colors disabled:cursor-not-allowed"
-                        style={
-                          quit
-                            ? { borderColor: QUIT_FLAG_COLOR, background: hex2rgba(QUIT_FLAG_COLOR, 0.12), color: QUIT_FLAG_COLOR }
-                            : { borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }
-                        }
-                      >
-                        <Flag size={11} fill={quit ? QUIT_FLAG_COLOR : "none"} />
-                        <span className="text-[10px]">Flag</span>
-                      </button>
-                    </div>
+                    <EditableCell
+                      value={link.remark}
+                      label="Remark"
+                      variant="pill"
+                      onSave={(val) => onUpdateLink(link.creatorId, { remark: val })}
+                    />
+                  </td>
+
+                  <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
+                    <button
+                      type="button"
+                      title={
+                        stageQuit
+                          ? "Execution stage is set to Quit"
+                          : quit
+                          ? "Flagged — click to unflag"
+                          : "Flag this creator"
+                      }
+                      onClick={() => !stageQuit && onUpdateCreatorField(link.creatorId, "quit", !quit)}
+                      disabled={stageQuit}
+                      className="flex h-[20px] w-fit flex-shrink-0 items-center gap-1 rounded-[6px] border px-1.5 transition-colors disabled:cursor-not-allowed"
+                      style={
+                        quit
+                          ? { borderColor: QUIT_FLAG_COLOR, background: hex2rgba(QUIT_FLAG_COLOR, 0.12), color: QUIT_FLAG_COLOR }
+                          : { borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }
+                      }
+                    >
+                      <Flag size={11} fill={quit ? QUIT_FLAG_COLOR : "none"} />
+                      <span className="text-[10px]">Flag</span>
+                    </button>
                   </td>
 
                   <td className="border-b px-3 py-2 text-right" style={{ borderColor: "var(--ln)" }}>
