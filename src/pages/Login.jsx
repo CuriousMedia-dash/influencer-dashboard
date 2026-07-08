@@ -67,7 +67,7 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="Enter your password"
                 className="mb-1.5 w-full rounded-[8px] border px-3 py-2 text-sm outline-none"
                 style={{ borderColor: "#D9E4F2", color: "#10243E" }}
               />
