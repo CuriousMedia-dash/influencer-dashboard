@@ -20,6 +20,7 @@ import {
 const SORT_OPTIONS = [
   { value: "none", label: "Default order" },
   { value: "liveDate", label: "Live date" },
+  { value: "paymentScheduledDate", label: "Payment scheduled date" },
   { value: "name", label: "Creator name" },
   { value: "platform", label: "Platform" },
   { value: "commercial", label: "Commercial" },
@@ -42,7 +43,7 @@ const COLS = [
   ["Locked Status", 96],
   ["Execution Stage", 150],
   ["Live Video Link", 120],
-  ["Payment Info", 150],
+  ["Payment Info", 175],
   ["Payment Status", 210],
   ["Remark", 200],
   ["Flag", 70],
@@ -165,6 +166,13 @@ export default function CampaignCreatorsTable({
         case "liveDate":
           av = a.item.liveDate || "";
           bv = b.item.liveDate || "";
+          if (!av && !bv) return 0;
+          if (!av) return 1;
+          if (!bv) return -1;
+          return av.localeCompare(bv) * dir;
+        case "paymentScheduledDate":
+          av = a.item.paymentScheduledDate || "";
+          bv = b.item.paymentScheduledDate || "";
           if (!av && !bv) return 0;
           if (!av) return 1;
           if (!bv) return -1;
@@ -430,22 +438,43 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentDialogCreatorId(link.creatorId)}
-                      className="flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] transition-colors"
-                      style={
-                        link.paymentInfo
-                          ? { borderColor: "rgba(43,174,102,.35)", background: "rgba(43,174,102,.08)", color: "#2BAE66" }
-                          : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
-                      }
-                      title={link.paymentInfo ? "Edit payment info" : "Add payment info"}
-                    >
-                      <CreditCard size={11} />
-                      <span className="truncate">
-                        {link.paymentInfo ? summarizePaymentInfo(link.paymentInfo) : "Add payment info"}
-                      </span>
-                    </button>
+                    <div className="flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentDialogCreatorId(link.creatorId)}
+                        className="flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] transition-colors"
+                        style={
+                          link.paymentInfo
+                            ? { borderColor: "rgba(43,174,102,.35)", background: "rgba(43,174,102,.08)", color: "#2BAE66" }
+                            : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
+                        }
+                        title={link.paymentInfo ? "Edit payment info" : "Add payment info"}
+                      >
+                        <CreditCard size={11} />
+                        <span className="truncate">
+                          {link.paymentInfo ? summarizePaymentInfo(link.paymentInfo) : "Add payment info"}
+                        </span>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <span
+                          className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-[.04em]"
+                          style={{ color: "var(--ink3)" }}
+                        >
+                          Scheduled
+                        </span>
+                        <input
+                          type="date"
+                          value={link.paymentScheduledDate || ""}
+                          onChange={(e) => onUpdateLink(link.creatorId, { paymentScheduledDate: e.target.value })}
+                          className="w-0 min-w-0 flex-1 rounded-[6px] border px-1.5 py-1 text-[10px] outline-none"
+                          style={{
+                            borderColor: "var(--ln)",
+                            color: link.paymentScheduledDate ? "var(--ink)" : "var(--ink3)",
+                          }}
+                        />
+                      </div>
+                    </div>
                   </td>
 
                   <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
