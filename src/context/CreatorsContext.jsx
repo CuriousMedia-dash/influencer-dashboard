@@ -311,6 +311,27 @@ export function CreatorsProvider({ children }) {
     [pushBaseFieldsToSupabase, loadFromSupabase]
   );
 
+  // Confirms a local file upload (CSV or Excel) by actually saving it to
+  // Supabase — the base fields only, same as a sheet sync would, so any
+  // in-app edits (remark/quit/commercial) on existing creators are left
+  // alone. Previously this only updated local React state, which looked
+  // like it worked but never actually reached the shared database.
+  // `removedIds`, if provided (admin-only "mirror this file" uploads),
+  // deletes creators no longer present in the uploaded file.
+  const confirmLocalImport = useCallback(
+    async (mergedRows, { removedIds = [] } = {}) => {
+      await pushBaseFieldsToSupabase(mergedRows);
+      if (removedIds.length > 0) {
+        const { error } = await supabase.from("creators").delete().in("id", removedIds);
+        if (error) {
+          console.error("Failed to remove creators no longer in the uploaded file:", error.message);
+        }
+      }
+      await loadFromSupabase();
+    },
+    [pushBaseFieldsToSupabase, loadFromSupabase]
+  );
+
   const unlinkSheet = useCallback(async () => {
     const { error } = await supabase.from("app_settings").delete().eq("key", MASTER_SHEET_KEY);
     if (error) {
@@ -371,6 +392,7 @@ export function CreatorsProvider({ children }) {
       loading,
       updateCreatorField,
       deleteCreator,
+      confirmLocalImport,
       deleteCreators,
       selectedIds,
       toggleSelected,
@@ -394,6 +416,7 @@ export function CreatorsProvider({ children }) {
       loading,
       updateCreatorField,
       deleteCreator,
+      confirmLocalImport,
       deleteCreators,
       selectedIds,
       toggleSelected,
