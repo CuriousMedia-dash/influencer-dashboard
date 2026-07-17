@@ -1,39 +1,10 @@
-import { useEffect, useState } from "react";
 import { Sun, Moon, LogOut } from "lucide-react";
-import { useCreators } from "../../hooks/useCreators";
 import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../hooks/useAuth";
-import { timeAgo } from "../../utils/format";
-
-function statusPillProps(syncStatus, lastSyncedAt) {
-  switch (syncStatus) {
-    case "syncing":
-      return { color: "#E0A62B", label: "Syncing…" };
-    case "synced":
-      return {
-        color: "#2BAE66",
-        label: lastSyncedAt ? `Synced ${timeAgo(lastSyncedAt)}` : "Synced",
-      };
-    case "error":
-      return { color: "#E0524B", label: "Sync error — click gear to retry" };
-    case "not_connected":
-    default:
-      return { color: "var(--ink3)", label: "No sheet linked" };
-  }
-}
 
 export default function Header({ onGearClick }) {
-  const { syncStatus, sheetLink } = useCreators();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
-  // Re-render every 30s so "Synced N minutes ago" stays roughly current.
-  const [, forceTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => forceTick((n) => n + 1), 30000);
-    return () => clearInterval(t);
-  }, []);
-
-  const { color, label } = statusPillProps(syncStatus, sheetLink?.lastSyncedAt);
 
   return (
     <header
@@ -67,23 +38,6 @@ export default function Header({ onGearClick }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <div
-            title={sheetLink?.url || "No Google Sheet linked yet — click the gear to connect one"}
-            className="flex items-center gap-1.5 rounded-full border px-3 py-[5px] text-[11px] shadow-[0_1px_2px_rgba(16,36,62,.04)]"
-            style={{
-              borderColor: "var(--ln)",
-              background: "var(--panel)",
-              color: "var(--ink2)",
-              fontFamily: "'JetBrains Mono', monospace",
-            }}
-          >
-            <span
-              className={"h-1.5 w-1.5 rounded-full" + (syncStatus === "syncing" ? " animate-pulse" : "")}
-              style={{ background: color }}
-            />
-            {label}
-          </div>
-
           <button
             type="button"
             onClick={toggleTheme}
@@ -106,8 +60,8 @@ export default function Header({ onGearClick }) {
           <button
             type="button"
             onClick={onGearClick}
-            title="Import creators / manage linked Google Sheet"
-            aria-label="Import creators / manage linked Google Sheet"
+            title="Import creators from a file"
+            aria-label="Import creators from a file"
             className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
             style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
             onMouseEnter={(e) => {
