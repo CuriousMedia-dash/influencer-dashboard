@@ -92,3 +92,20 @@ body{
   background:var(--am);
   animation:pw 2.4s infinite;
 }
+
+/* Anti-copy: blocks selecting/highlighting text across the whole app, so
+   the browser's own copy/right-click-copy has nothing to act on. Explicitly
+   re-enabled on inputs/textareas — this is about protecting displayed data,
+   not about stopping people from typing and editing normally. This is a
+   deterrent only; it doesn't stop screenshots, screen recording, or anyone
+   who disables JavaScript. */
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}

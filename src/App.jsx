@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Layout from "./components/layout/Layout";
@@ -48,6 +49,32 @@ function AuthGate({ children }) {
 }
 
 export default function App() {
+  // Anti-copy: blocks right-click, copy, and cut, everywhere in the app
+  // (including the public Brand Dashboard). A deterrent only — doesn't
+  // stop screenshots/screen recording, and can be bypassed by disabling
+  // JavaScript. Excludes form fields via the CSS in main.css, so typing
+  // and editing still works normally.
+  useEffect(() => {
+    function blockContextMenu(e) {
+      e.preventDefault();
+    }
+    function blockCopyOrCut(e) {
+      const tag = e.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+      e.preventDefault();
+    }
+
+    document.addEventListener("contextmenu", blockContextMenu);
+    document.addEventListener("copy", blockCopyOrCut);
+    document.addEventListener("cut", blockCopyOrCut);
+
+    return () => {
+      document.removeEventListener("contextmenu", blockContextMenu);
+      document.removeEventListener("copy", blockCopyOrCut);
+      document.removeEventListener("cut", blockCopyOrCut);
+    };
+  }, []);
+
   return (
     <ThemeProvider>
       <ToastProvider>
