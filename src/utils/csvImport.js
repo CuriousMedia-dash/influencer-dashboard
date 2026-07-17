@@ -63,6 +63,30 @@ const PLATFORM_LINK_HEADER_MAP = {
 // Fields that must be present and non-empty for a row to be valid.
 const REQUIRED_FIELDS = ["name", "followers"];
 
+function normaliseHeaderCell(h) {
+  return String(h ?? "").trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
+}
+
+/**
+ * Real-world files often have a title, an instructions row, a blank
+ * spacer row, or a logo/legend above the actual header row — not just a
+ * clean header on line 1. Rather than assume row 1 is always the header,
+ * scan the first several lines and use whichever one actually contains
+ * both a Name-like and a Followers-like column. Falls back to line 0 if
+ * nothing matches, so the existing "missing required columns" error still
+ * fires with a sensible message instead of silently misbehaving.
+ */
+function findHeaderRowIndex(lines) {
+  const maxScan = Math.min(lines.length, 15);
+  for (let i = 0; i < maxScan; i++) {
+    const cells = parseCsvLine(lines[i]).map(normaliseHeaderCell);
+    const hasName = cells.some((c) => HEADER_MAP[c] === "name");
+    const hasFollowers = cells.some((c) => HEADER_MAP[c] === "followers");
+    if (hasName && hasFollowers) return i;
+  }
+  return 0;
+}
+
 // Normalise a phone number to digits-only for dedup comparison.
 // "+91 70003 38800" → "917000338800"
 export function normalisePhone(raw) {
@@ -94,10 +118,11 @@ export function parseCsvImport(csvText) {
     };
   }
 
-  // Parse header row — handle quoted fields too.
-  const headers = parseCsvLine(lines[0]).map((h) =>
-    h.trim().toLowerCase().replace(/[^a-z ]/g, "").trim()
-  );
+  // Find the real header row — not necessarily line 0 (see
+  // findHeaderRowIndex above for why), then parse it, handling quoted
+  // fields too.
+  const headerRowIndex = findHeaderRowIndex(lines);
+  const headers = parseCsvLine(lines[headerRowIndex]).map(normaliseHeaderCell);
 
   // Map header index → internal field name.
   const fieldIndex = {}; // { fieldName: colIndex }
@@ -121,7 +146,7 @@ export function parseCsvImport(csvText) {
       rows: [],
       errors: [
         {
-          rowNum: 1,
+          rowNum: headerRowIndex + 1,
           name: null,
           message: `Required column(s) not found in CSV header: ${missingCols.join(", ")}. 
 Found headers: ${headers.join(", ")}`,
@@ -133,8 +158,8 @@ Found headers: ${headers.join(", ")}`,
   const rows = [];
   const errors = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const rowNum = i + 1; // 1-based, header is row 1
+  for (let i = headerRowIndex + 1; i < lines.length; i++) {
+    const rowNum = i + 1; // 1-based
     const cols = parseCsvLine(lines[i]);
 
     // Google Sheets exports pad the sheet out to its full row/column range,
