@@ -20,7 +20,12 @@ function base64ToArrayBuffer(base64) {
  * the calling code doesn't need to know or care which source was used.
  */
 export async function syncFromExcelFileUrl(fileUrl, creators, { mirror = false } = {}) {
-  const { data, error } = await supabase.functions.invoke("fetch-excel-file", {
+  // Calling by "swift-worker" (not "fetch-excel-file") on purpose — that's
+  // this function's actual URL slug in Supabase. Renaming it in the
+  // dashboard only changes the display label, not the real routing
+  // address, so the invoke call has to match the address, not the name
+  // shown in the Functions list.
+  const { data, error } = await supabase.functions.invoke("swift-worker", {
     body: { fileUrl },
   });
 
