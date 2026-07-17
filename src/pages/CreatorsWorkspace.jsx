@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
 import TabBar from "../components/layout/TabBar";
 import FilterSidebar from "../components/creators/FilterSidebar";
 import CreatorsTable from "../components/creators/CreatorsTable";
@@ -11,9 +10,8 @@ import { useCreators } from "../hooks/useCreators";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useCreatorFilters } from "../hooks/useCreatorFilters";
 import { useToast } from "../hooks/useToast";
-import { uniqValues, getTier } from "../utils/format";
-import { NICHE_COLORS, LANG_COLORS, TIER_LABELS } from "../utils/constants";
-import { creatorsToCsv, downloadCsv } from "../utils/csvExport";
+import { uniqValues } from "../utils/format";
+import { NICHE_COLORS, LANG_COLORS } from "../utils/constants";
 
 export default function CreatorsWorkspace({ activeTab, onTabChange }) {
   const {
@@ -59,12 +57,6 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
 
   const totalSelected = selectedIds.size;
 
-  function handleDownloadCsv() {
-    const csv = creatorsToCsv(filtered, (followers) => TIER_LABELS[getTier(followers)]);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`creators-${stamp}.csv`, csv);
-  }
-
   return (
     <div>
       <div className="mb-3 text-[13px]" style={{ color: "var(--ink2)" }}>
@@ -82,27 +74,6 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
             campaignCount={campaigns.length}
           />
         </div>
-
-        {activeTab === "creators" && (
-          <button
-            type="button"
-            onClick={handleDownloadCsv}
-            title="Download current list as CSV"
-            className="flex h-[42px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border px-3.5 text-[13px] font-medium shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
-            style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--up)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--panel)";
-              e.currentTarget.style.color = "var(--ink2)";
-            }}
-          >
-            <Download size={15} />
-            Download CSV
-          </button>
-        )}
       </div>
 
       {activeTab === "creators" ? (

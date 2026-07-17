@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
-import { Lock, Unlock, Sun, Moon, Plus } from "lucide-react";
+import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
+import { Lock, Unlock, Sun, Moon, Download, Plus, Mail, Upload, Image as ImageIcon, X } from "lucide-react";
 
 // The brand dashboard's light/dark toggle is entirely its own — separate
 // from the main app's theme.
@@ -37,6 +38,24 @@ function fmtDate(d) {
   });
 }
 
+/**
+ * Opens a mail draft (blank "to" — filled in by whoever's sending, same
+ * pattern as the internal app's payment-email button) confirming a
+ * locked creator and the final cost, addressed to the brand.
+ */
+function sendLockConfirmationEmail({ campaignName, creatorName, finalCost }) {
+  const subject = `Locked: ${creatorName} \u2014 ${campaignName || "Campaign"}`;
+  const body = [
+    `Hi,`,
+    ``,
+    `Confirming that we've locked ${creatorName} for this campaign.`,
+    `Final cost: \u20b9${fmt(parseAmount(finalCost))}`,
+    ``,
+    `Let us know if anything looks off.`,
+  ].join("\n");
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 // Slab card used for the top summary row.
 function SlabCard({ label, children, editable, value, onChange, type = "text", placeholder }) {
   return (
@@ -63,6 +82,88 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
         <div className="text-base font-semibold" style={{ color: "var(--ink)" }}>
           {children}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Upload/replace/view the "brand sent approval" screenshot. Anyone with
+// the link can upload or replace it (agency or brand) — there's no login
+// here to restrict it further, matching how the rest of this page works.
+function ApprovalScreenshotUpload({ campaignId, creatorId, screenshotUrl, onChange }) {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const ext = file.name.split(".").pop() || "png";
+      const path = `${campaignId}/${creatorId}-${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("brand-approvals")
+        .upload(path, file, { upsert: true });
+      if (uploadErr) throw uploadErr;
+      const { data } = supabase.storage.from("brand-approvals").getPublicUrl(path);
+      onChange(data.publicUrl);
+    } catch (err) {
+      setUploadError(err.message || "Upload failed \u2014 try again.");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      {screenshotUrl ? (
+        <>
+          <a href={screenshotUrl} target="_blank" rel="noreferrer" title="View approval screenshot">
+            <img
+              src={screenshotUrl}
+              alt="Approval screenshot"
+              className="h-[22px] w-[22px] rounded-[5px] border object-cover"
+              style={{ borderColor: "var(--ln)" }}
+            />
+          </a>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            title="Replace screenshot"
+            className="flex h-[20px] w-[20px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors disabled:opacity-60"
+            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+          >
+            <Upload size={10} />
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          title="Upload approval screenshot"
+          className="flex items-center gap-1 rounded-[6px] border px-1.5 py-1 text-[10px] transition-colors disabled:opacity-60"
+          style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }}
+        >
+          <ImageIcon size={10} />
+          {uploading ? "Uploading\u2026" : "Add SS"}
+        </button>
+      )}
+      {uploadError && (
+        <span className="text-[9.5px]" style={{ color: "#E0524B" }}>
+          {uploadError}
+        </span>
       )}
     </div>
   );
@@ -341,6 +442,15 @@ function BrandDashboardView({ campaignId }) {
             >
               {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
             </button>
+            <button
+              type="button"
+              onClick={() => downloadCsv(`${campaign.name || "brand-dashboard"}.csv`, brandDashboardToCsv(rows))}
+              className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors"
+              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
+            >
+              <Download size={13} />
+              Download CSV
+            </button>
           </div>
         </div>
 
@@ -488,19 +598,46 @@ function BrandDashboardView({ campaignId }) {
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <button
-                        type="button"
-                        onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
-                        className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors"
-                        style={
-                          row.brandLocked
-                            ? { borderColor: "#2BAE66", color: "#2BAE66", background: "rgba(43,174,102,.08)" }
-                            : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
-                        }
-                      >
-                        {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                        {row.brandLocked ? "Locked" : "Unlocked"}
-                      </button>
+                      <div className="flex flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
+                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors"
+                          style={
+                            row.brandLocked
+                              ? { borderColor: "#2BAE66", color: "#2BAE66", background: "rgba(43,174,102,.08)" }
+                              : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
+                          }
+                        >
+                          {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                          {row.brandLocked ? "Locked" : "Unlocked"}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title="Email the brand: locked creator + final cost"
+                            onClick={() =>
+                              sendLockConfirmationEmail({
+                                campaignName: campaign.name,
+                                creatorName: row.name,
+                                finalCost: row.brandFinalCost,
+                              })
+                            }
+                            className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors"
+                            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                          >
+                            <Mail size={11} />
+                          </button>
+
+                          <ApprovalScreenshotUpload
+                            campaignId={campaign.id}
+                            creatorId={row.creatorId}
+                            screenshotUrl={row.brandApprovalScreenshotUrl}
+                            onChange={(url) => updateLinkField(row.creatorId, "brandApprovalScreenshotUrl", url)}
+                          />
+                        </div>
+                      </div>
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>

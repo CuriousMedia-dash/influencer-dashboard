@@ -35,6 +35,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined);
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(() => {
     const type = readAuthLinkType();
     return type === "invite" || type === "recovery";
@@ -51,6 +52,30 @@ export function AuthProvider({ children }) {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Admin status is just "is this email in the admins table" — checked
+  // fresh whenever the session changes, never cached client-side beyond
+  // this. The real enforcement is the database's own RLS policies; this
+  // is only used to decide what the UI shows.
+  useEffect(() => {
+    const email = session?.user?.email;
+    if (!email) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("admins")
+      .select("email")
+      .eq("email", email)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIsAdmin(Boolean(data));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   const signInWithPassword = useCallback(async (email, password) => {
     setAuthError("");
@@ -107,6 +132,7 @@ export function AuthProvider({ children }) {
         loading: session === undefined,
         authError,
         authNotice,
+        isAdmin,
         needsPasswordSetup,
         signInWithPassword,
         requestPasswordReset,

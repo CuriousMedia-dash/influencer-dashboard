@@ -13,7 +13,7 @@ const STAGES = {
   DONE: "done",         // import complete
 };
 
-const TABS = { UPLOAD: "upload", LINK: "link" };
+const TABS = { UPLOAD: "upload", LINK: "link", IMPORT: "import" };
 
 function TabButton({ active, onClick, icon, label }) {
   return (
@@ -34,7 +34,17 @@ function TabButton({ active, onClick, icon, label }) {
 }
 
 export default function ImportCreatorsModal({ open, onClose }) {
-  const { creators, setCreators, sheetLink, syncStatus, syncNow, unlinkSheet, setSheetMirror } = useCreators();
+  const {
+    creators,
+    setCreators,
+    sheetLink,
+    syncStatus,
+    syncNow,
+    unlinkSheet,
+    setSheetMirror,
+    importFromSheet,
+    isAdmin,
+  } = useCreators();
   const showToast = useToast();
   const fileRef = useRef(null);
 
@@ -55,6 +65,12 @@ export default function ImportCreatorsModal({ open, onClose }) {
   const [mirrorMode, setMirrorMode] = useState(() => Boolean(sheetLink?.mirror));
   const [editingLink, setEditingLink] = useState(false);
   const syncing = syncStatus === "syncing";
+
+  // ── One-time "add creators from another sheet" state ──
+  const [importLinkInput, setImportLinkInput] = useState("");
+  const [importRunError, setImportRunError] = useState("");
+  const [importSummary, setImportSummary] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   function reset() {
     setStage(STAGES.IDLE);
@@ -166,6 +182,22 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setLinkError("");
   }
 
+  async function handleImportFromSheet() {
+    if (!importLinkInput.trim()) return;
+    setImporting(true);
+    setImportRunError("");
+    setImportSummary(null);
+    try {
+      const { added, updated, rowErrors } = await importFromSheet(importLinkInput.trim());
+      setImportSummary({ added, updated, rowErrors });
+      showToast(`${added} creator${added === 1 ? "" : "s"} added, ${updated} updated from that sheet`, true);
+    } catch (err) {
+      setImportRunError(err.message || "Something went wrong while importing.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <Modal
       open={open}
@@ -174,7 +206,9 @@ export default function ImportCreatorsModal({ open, onClose }) {
       description={
         tab === TABS.UPLOAD
           ? "Export your Google Sheet as a CSV file (File → Download → CSV) then upload it here. A row matching an existing creator's name + phone + platform will be skipped as a duplicate — the same person on 2 platforms is kept as 2 entries."
-          : "Link a Google Sheet once, then hit \"Sync now\" whenever it changes. Rows are matched by name + phone + platform — matches update that entry, new platforms/people are added, and duplicate rows collapse into one."
+          : tab === TABS.LINK
+          ? "This is the one master sheet the whole team syncs from — everyone sees the same data. Rows are matched by name + phone + platform."
+          : "Pull creators in from a different sheet, one time. This adds to the master list above without changing which sheet it stays linked to."
       }
       maxWidth={520}
     >
@@ -193,8 +227,16 @@ export default function ImportCreatorsModal({ open, onClose }) {
           active={tab === TABS.LINK}
           onClick={() => setTab(TABS.LINK)}
           icon={<Link2 size={13} />}
-          label="Live sheet link"
+          label="Master sheet"
         />
+        {isAdmin && (
+          <TabButton
+            active={tab === TABS.IMPORT}
+            onClick={() => setTab(TABS.IMPORT)}
+            icon={<Upload size={13} />}
+            label="Add more"
+          />
+        )}
       </div>
 
       {tab === TABS.UPLOAD && (
@@ -392,7 +434,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
                 Last synced {timeAgo(sheetLink.lastSyncedAt)}
               </div>
             </div>
-          ) : (
+          ) : isAdmin ? (
             <div className="mb-4">
               <label
                 className="mb-1.5 block text-xs font-medium"
@@ -412,18 +454,31 @@ export default function ImportCreatorsModal({ open, onClose }) {
               <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: "var(--ink3)" }}>
                 {editingLink
                   ? "Paste the URL of the sheet you want to connect instead. Syncing will match/add/update against this new sheet."
-                  : 'Set sharing to "Anyone with the link can view". We\'ll read every tab in the sheet. A direct published CSV link (single tab only) also works.'}
+                  : 'Set sharing to "Anyone with the link can view". We\'ll read every tab in the sheet. A direct published CSV link (single tab only) also works. This becomes the one sheet the whole team syncs from.'}
               </p>
+            </div>
+          ) : (
+            <div
+              className="mb-4 rounded-[10px] border p-3.5 text-xs leading-relaxed"
+              style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
+            >
+              No master sheet connected yet. Ask an admin to connect one — once they do, you'll see it here automatically.
             </div>
           )}
 
           <label
-            className="mb-4 flex cursor-pointer items-start gap-2 rounded-[10px] border p-3"
-            style={{ borderColor: "var(--ln)", background: "var(--up)" }}
+            className="mb-4 flex items-start gap-2 rounded-[10px] border p-3"
+            style={{
+              borderColor: "var(--ln)",
+              background: "var(--up)",
+              cursor: isAdmin ? "pointer" : "default",
+              opacity: isAdmin ? 1 : 0.7,
+            }}
           >
             <input
               type="checkbox"
               checked={mirrorMode}
+              disabled={!isAdmin}
               onChange={(e) => {
                 const next = e.target.checked;
                 setMirrorMode(next);
@@ -433,7 +488,8 @@ export default function ImportCreatorsModal({ open, onClose }) {
                   setSheetMirror(next);
                 }
               }}
-              className="mt-[2px] h-3.5 w-3.5 cursor-pointer accent-[#1E6FE0]"
+              className="mt-[2px] h-3.5 w-3.5 accent-[#1E6FE0]"
+              style={{ cursor: isAdmin ? "pointer" : "not-allowed" }}
             />
             <span className="text-[11px] leading-relaxed" style={{ color: "var(--ink2)" }}>
               <b style={{ color: "var(--ink)" }}>Mirror this sheet exactly</b> — also remove any
@@ -505,26 +561,30 @@ export default function ImportCreatorsModal({ open, onClose }) {
                   <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
                   {syncing ? "Syncing…" : "Sync now"}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleStartChangeLink}
-                  className="flex items-center gap-1.5 rounded-[7px] border px-3.5 py-2.5 text-xs"
-                  style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
-                >
-                  <Link2 size={13} />
-                  Change link
-                </button>
-                <button
-                  type="button"
-                  onClick={handleUnlink}
-                  className="flex items-center gap-1.5 rounded-[7px] border px-3.5 py-2.5 text-xs"
-                  style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
-                >
-                  <Unlink size={13} />
-                  Unlink
-                </button>
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleStartChangeLink}
+                      className="flex items-center gap-1.5 rounded-[7px] border px-3.5 py-2.5 text-xs"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                    >
+                      <Link2 size={13} />
+                      Change link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUnlink}
+                      className="flex items-center gap-1.5 rounded-[7px] border px-3.5 py-2.5 text-xs"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                    >
+                      <Unlink size={13} />
+                      Unlink
+                    </button>
+                  </>
+                )}
               </>
-            ) : (
+            ) : isAdmin ? (
               <>
                 <button
                   type="button"
@@ -544,7 +604,86 @@ export default function ImportCreatorsModal({ open, onClose }) {
                   Cancel
                 </button>
               </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleClose}
+                className="flex-1 rounded-[7px] border py-2.5 text-xs"
+                style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+              >
+                Close
+              </button>
             )}
+          </div>
+        </>
+      )}
+
+      {tab === TABS.IMPORT && (
+        <>
+          <div
+            className="mb-4 rounded-[10px] border p-3.5 text-[11px] leading-relaxed"
+            style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
+          >
+            This adds creators from a different sheet into the same master list, once. It never
+            changes which sheet the team keeps syncing from — that stays whatever's set on the
+            Master sheet tab.
+          </div>
+
+          <label
+            className="mb-1.5 block text-xs font-medium"
+            style={{ color: "var(--ink2)" }}
+          >
+            Google Sheet URL to import from
+          </label>
+          <input
+            type="text"
+            value={importLinkInput}
+            onChange={(e) => setImportLinkInput(e.target.value)}
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            className="mb-4 w-full rounded-[8px] border px-3 py-2.5 text-xs outline-none"
+            style={{ borderColor: "var(--ln)", color: "var(--ink)" }}
+          />
+
+          {importRunError && (
+            <div
+              className="mb-4 flex items-start gap-2 rounded-[10px] border p-3 text-xs"
+              style={{ borderColor: "rgba(224,82,75,.3)", background: "rgba(224,82,75,.06)", color: "#E0524B" }}
+            >
+              <AlertCircle size={14} className="mt-[1px] flex-shrink-0" />
+              {importRunError}
+            </div>
+          )}
+
+          {importSummary && !importRunError && (
+            <div
+              className="mb-4 flex items-center gap-2 rounded-[10px] border p-3 text-xs font-medium"
+              style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}
+            >
+              <CheckCircle2 size={14} className="flex-shrink-0" />
+              {importSummary.added} added, {importSummary.updated} updated
+              {importSummary.rowErrors?.length > 0 &&
+                `, ${importSummary.rowErrors.length} row${importSummary.rowErrors.length === 1 ? "" : "s"} skipped`}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleImportFromSheet}
+              disabled={importing || !importLinkInput.trim()}
+              className="flex-1 rounded-[7px] py-2.5 text-xs font-semibold text-white disabled:opacity-60"
+              style={{ background: "var(--am)" }}
+            >
+              {importing ? "Importing…" : "Import into master list"}
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded-[7px] border px-3.5 py-2.5 text-xs"
+              style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+            >
+              Close
+            </button>
           </div>
         </>
       )}

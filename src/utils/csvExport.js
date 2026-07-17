@@ -107,7 +107,7 @@ export function downloadCsv(filename, csvString) {
 const BRAND_DASHBOARD_CSV_COLUMNS = [
   { key: "name", label: "Creator" },
   { key: "followers", label: "Followers" },
-  { key: "brandLockedCost", label: "Locked Cost" },
+  { key: "brandLockedCost", label: "Proposal Cost" },
   { key: "brandReimbursement", label: "Reimbursement" },
   { key: "total", label: "Total" },
   { key: "brandCounterCost", label: "Counter Cost" },
