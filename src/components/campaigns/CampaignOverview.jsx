@@ -161,6 +161,131 @@ function RemainingBudgetField({ campaign }) {
   );
 }
 
+/**
+ * Locked Profiles = how many creator links in this campaign have your own
+ * (agency-side) Locked/Unlocked toggle set to locked. Independent of the
+ * brand's own separate "Locked Profiles" count on their dashboard.
+ */
+function LockedProfilesField({ campaign }) {
+  const locked = (campaign.creatorLinks || []).filter(
+    (l) => l.lockStatus === "locked"
+  ).length;
+  const total = (campaign.creatorLinks || []).length;
+
+  return (
+    <div
+      className="rounded-[11px] border px-3.5 py-3"
+      style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
+    >
+      <div
+        className="mb-1.5 text-[11px] uppercase tracking-[.07em]"
+        style={{ color: "var(--ink3)" }}
+      >
+        Locked Profiles
+      </div>
+      <div
+        className="text-base font-semibold"
+        style={{ color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+      >
+        {locked}/{total}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Live Link Count — shows how many creator links actually have a live
+ * link entered (posted) against the target the agency sets (how many are
+ * expected for this campaign). The posted number is computed, the target
+ * is the one editable piece — click the pencil to change it.
+ */
+function LiveLinkCountField({ campaign, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(campaign.linksExpected ?? "");
+
+  const posted = (campaign.creatorLinks || []).filter((l) => l.liveLink).length;
+
+  function startEdit() {
+    setDraft(campaign.linksExpected ?? "");
+    setEditing(true);
+  }
+
+  function save() {
+    onUpdate({ linksExpected: Number(draft) || 0 });
+    setEditing(false);
+  }
+
+  return (
+    <div
+      className="rounded-[11px] border px-3.5 py-3"
+      style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
+    >
+      <div
+        className="mb-1.5 flex items-center justify-between text-[11px] uppercase tracking-[.07em]"
+        style={{ color: "var(--ink3)" }}
+      >
+        Live Link Count
+        {!editing && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] transition-colors hover:bg-[var(--up)]"
+            style={{ color: "var(--ink3)" }}
+            title="Edit target link count"
+          >
+            <Pencil size={11} />
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <span
+            className="flex-shrink-0 text-base font-semibold"
+            style={{ color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            {posted}/
+          </span>
+          <input
+            autoFocus
+            type="number"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="ep-text-input"
+          />
+          <button
+            type="button"
+            onClick={save}
+            className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[6px] text-white"
+            style={{ background: "var(--am)" }}
+          >
+            <Check size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[6px] border"
+            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <div
+          className="text-base font-semibold"
+          style={{ color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          {posted}/{campaign.linksExpected || "\u2014"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CampaignOverview({ campaign, onUpdate }) {
   const statusColor = CAMPAIGN_STATUS_COLORS[campaign.status] || "#8FA3BC";
 
@@ -193,16 +318,11 @@ export default function CampaignOverview({ campaign, onUpdate }) {
         onSave={(v) => onUpdate({ timelineEnd: v })}
       />
       <OverviewField
-        label="Owner / POC"
+        label="Point of Contact (POC)"
         value={campaign.poc || campaign.owner}
         onSave={(v) => onUpdate({ owner: v, poc: v })}
       />
-      <OverviewField
-        label="Links Expected"
-        value={campaign.linksExpected}
-        type="number"
-        onSave={(v) => onUpdate({ linksExpected: v })}
-      />
+      <LiveLinkCountField campaign={campaign} onUpdate={onUpdate} />
       <div
         className="rounded-[11px] border px-3.5 py-3"
         style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
@@ -227,6 +347,7 @@ export default function CampaignOverview({ campaign, onUpdate }) {
         </select>
       </div>
       <RemainingBudgetField campaign={campaign} />
+      <LockedProfilesField campaign={campaign} />
     </div>
   );
 }

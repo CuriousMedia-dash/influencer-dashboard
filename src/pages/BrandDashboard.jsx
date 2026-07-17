@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
-import { fmt, hex2rgba, isUrl } from "../utils/format";
+import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
-import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download, Plus } from "lucide-react";
+import { Lock, Unlock, Sun, Moon, Plus } from "lucide-react";
 
 // The brand dashboard's light/dark toggle is entirely its own — separate
 // from the main app's theme.
@@ -27,6 +26,15 @@ function parseAmount(v) {
   if (v == null || v === "") return 0;
   const n = Number(String(v).replace(/,/g, ""));
   return isNaN(n) ? 0 : n;
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 // Slab card used for the top summary row.
@@ -60,7 +68,7 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
   );
 }
 
-// Small anchored popover for editing Locked Cost + Reimbursement together.
+// Small anchored popover for editing Proposal Cost + Reimbursement together.
 function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onClose }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const panelRef = useRef(null);
@@ -107,11 +115,11 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
       onClick={(e) => e.stopPropagation()}
     >
       <h4 className="mb-2 text-xs font-semibold" style={{ color: "var(--ink)" }}>
-        Locked Cost
+        Proposal Cost
       </h4>
 
       <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>
-        Locked Cost
+        Proposal Cost
       </label>
       <div className="mb-2.5 flex items-center gap-1">
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
@@ -158,7 +166,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
   );
 }
 
-// The visible cell shows only the Locked Cost value; Reimbursement + Total
+// The visible cell shows only the Proposal Cost value; Reimbursement + Total
 // live inside the popover, opened by clicking.
 function LockedCostCell({ lockedCost, reimbursement, onChange }) {
   const [open, setOpen] = useState(false);
@@ -170,7 +178,7 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
         ref={anchorRef}
         type="button"
         onClick={() => setOpen(true)}
-        title="Click to edit locked cost & reimbursement"
+        title="Click to edit proposal cost & reimbursement"
         className="locked-cost-trigger flex items-center gap-1 text-left"
       >
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
@@ -290,6 +298,7 @@ function BrandDashboardView({ campaignId }) {
 
   const { campaign, rows } = data;
   const linksPosted = rows.filter((r) => r.liveLink).length;
+  const linksExpected = Number(campaign.linksExpected) || rows.length;
   const lockedProfilesCount = rows.filter((r) => r.brandLocked).length;
 
   return (
@@ -332,15 +341,6 @@ function BrandDashboardView({ campaignId }) {
             >
               {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
             </button>
-            <button
-              type="button"
-              onClick={() => downloadCsv(`${campaign.name || "brand-dashboard"}.csv`, brandDashboardToCsv(rows))}
-              className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors"
-              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
-            >
-              <Download size={13} />
-              Download CSV
-            </button>
           </div>
         </div>
 
@@ -378,7 +378,7 @@ function BrandDashboardView({ campaignId }) {
           />
 
           <SlabCard label="Links Posted">
-            {linksPosted}/{rows.length}
+            {linksPosted}/{linksExpected}
           </SlabCard>
 
           <SlabCard label="Locked Profiles">{lockedProfilesCount}</SlabCard>
@@ -397,7 +397,7 @@ function BrandDashboardView({ campaignId }) {
             <thead>
               <tr>
                 {[
-                  "Creator", "Followers", "Locked Cost", "Counter Cost", "Final Cost",
+                  "Creator", "Followers", "Proposal Cost", "Counter Cost", "Final Cost",
                   "Remarks", "Locked Status", "Execution Stage", "Live Video Link", "Viewership",
                 ].map((h) => (
                   <th
@@ -417,9 +417,9 @@ function BrandDashboardView({ campaignId }) {
                 return (
                   <tr key={row.creatorId}>
                     <td className="whitespace-nowrap border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      {row.profileLink && isUrl(row.profileLink) ? (
+                      {row.profileLink && toHref(row.profileLink) ? (
                         <a
-                          href={row.profileLink}
+                          href={toHref(row.profileLink)}
                           target="_blank"
                           rel="noreferrer"
                           title="View profile"
@@ -504,18 +504,25 @@ function BrandDashboardView({ campaignId }) {
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <span
-                        className="inline-flex whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px]"
-                        style={{ color: stageColor, borderColor: hex2rgba(stageColor, 0.35), background: hex2rgba(stageColor, 0.08) }}
-                      >
-                        {row.executionStage}
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className="inline-flex w-fit whitespace-nowrap rounded-full border px-2 py-[3px] text-[11px]"
+                          style={{ color: stageColor, borderColor: hex2rgba(stageColor, 0.35), background: hex2rgba(stageColor, 0.08) }}
+                        >
+                          {row.executionStage}
+                        </span>
+                        {row.liveDate && (
+                          <span className="text-[10.5px]" style={{ color: "var(--ink3)" }}>
+                            {fmtDate(row.liveDate)}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      {row.liveLink && isUrl(row.liveLink) ? (
+                      {row.liveLink && toHref(row.liveLink) ? (
                         <a
-                          href={row.liveLink}
+                          href={toHref(row.liveLink)}
                           target="_blank"
                           rel="noreferrer"
                           className="underline decoration-1 underline-offset-2"

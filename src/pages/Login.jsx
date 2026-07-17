@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Login() {
-  const { signInWithPassword, requestPasswordReset, authError, authNotice } = useAuth();
-  const [mode, setMode] = useState("password"); // "password" | "forgot"
+  const { signInWithPassword, authError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -13,14 +12,6 @@ export default function Login() {
     if (!email.trim() || !password) return;
     setSubmitting(true);
     await signInWithPassword(email.trim(), password);
-    setSubmitting(false);
-  }
-
-  async function handleForgot(e) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setSubmitting(true);
-    await requestPasswordReset(email.trim());
     setSubmitting(false);
   }
 
@@ -34,15 +25,13 @@ export default function Login() {
           className="mb-1.5 text-xl font-semibold"
           style={{ fontFamily: "Fraunces, serif", color: "#10243E" }}
         >
-          Curious Media CRM
+          Influencer Suite
         </h1>
         <p className="mb-5 text-sm" style={{ color: "#5B7390" }}>
-          {mode === "password"
-            ? "Sign in with your work email and password."
-            : "Enter your email and we'll send you a reset link."}
+          Sign in with your work email and password.
         </p>
 
-        <form onSubmit={mode === "password" ? handleSignIn : handleForgot}>
+        <form onSubmit={handleSignIn}>
           <label className="mb-1.5 block text-xs font-semibold" style={{ color: "#5B7390" }}>
             Work email
           </label>
@@ -57,39 +46,18 @@ export default function Login() {
             style={{ borderColor: "#D9E4F2", color: "#10243E" }}
           />
 
-          {mode === "password" && (
-            <>
-              <label className="mb-1.5 block text-xs font-semibold" style={{ color: "#5B7390" }}>
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                className="mb-1.5 w-full rounded-[8px] border px-3 py-2 text-sm outline-none"
-                style={{ borderColor: "#D9E4F2", color: "#10243E" }}
-              />
-              <button
-                type="button"
-                onClick={() => setMode("forgot")}
-                className="mb-3 text-xs font-medium"
-                style={{ color: "#1E6FE0" }}
-              >
-                Forgot password?
-              </button>
-            </>
-          )}
-
-          {authNotice && (
-            <div
-              className="mb-3 rounded-[8px] px-3 py-2 text-xs"
-              style={{ background: "#EAF7EF", color: "#1E9E5A" }}
-            >
-              {authNotice}
-            </div>
-          )}
+          <label className="mb-1.5 block text-xs font-semibold" style={{ color: "#5B7390" }}>
+            Password
+          </label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            className="mb-3 w-full rounded-[8px] border px-3 py-2 text-sm outline-none"
+            style={{ borderColor: "#D9E4F2", color: "#10243E" }}
+          />
 
           {authError && (
             <div
@@ -106,30 +74,13 @@ export default function Login() {
             className="w-full rounded-[8px] py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             style={{ background: "#1E6FE0" }}
           >
-            {submitting
-              ? "Please wait\u2026"
-              : mode === "password"
-              ? "Sign in"
-              : "Send reset link"}
+            {submitting ? "Please wait\u2026" : "Sign in"}
           </button>
-
-          {mode === "forgot" && (
-            <button
-              type="button"
-              onClick={() => setMode("password")}
-              className="mt-3 w-full text-center text-xs font-medium"
-              style={{ color: "#5B7390" }}
-            >
-              Back to sign in
-            </button>
-          )}
         </form>
 
-        {mode === "password" && (
-          <p className="mt-4 text-center text-[11px]" style={{ color: "#8FA3BC" }}>
-            New to the team? Ask your admin to invite you — you'll get a one-time email to set your password.
-          </p>
-        )}
+        <p className="mt-4 text-center text-[11px]" style={{ color: "#8FA3BC" }}>
+          New here? We don't do self sign-up — sweet-talk your admin into an invite. You'll get a one-time email to set your password, then you're in for good.
+        </p>
       </div>
     </div>
   );
