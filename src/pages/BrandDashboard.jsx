@@ -494,7 +494,7 @@ function BrandDashboardView({ campaignId }) {
           <SlabCard label="Locked Profiles">{lockedProfilesCount}</SlabCard>
 
           <SlabCard
-            label="Owner / POC"
+            label="Point Of Contact(POC)"
             editable
             value={campaign.brandPoc}
             onChange={(v) => updateMetaField("brandPoc", v)}

@@ -321,17 +321,25 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td
-                    className="overflow-hidden border-b px-3 py-2"
+                    className="relative border-b px-3 py-2"
                     style={{ borderColor: "var(--ln)", color: "var(--ink2)", fontFamily: "'JetBrains Mono', monospace" }}
                   >
-                    <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={creator.phone}>
+                    <span
+                      className="block overflow-hidden text-ellipsis whitespace-nowrap hover:absolute hover:left-3 hover:top-1/2 hover:z-20 hover:w-max hover:max-w-[220px] hover:-translate-y-1/2 hover:overflow-visible hover:whitespace-normal hover:break-all hover:rounded-[6px] hover:border hover:px-2 hover:py-1.5 hover:shadow-lg"
+                      style={{ background: "var(--panel)" }}
+                      title={creator.phone}
+                    >
                       {creator.phone || "\u2014"}
                     </span>
                   </td>
 
-                  <td className="overflow-hidden border-b px-3 py-2" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
+                  <td className="relative border-b px-3 py-2" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" title={creator.email}>
+                      <span
+                        className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap hover:absolute hover:left-3 hover:top-1/2 hover:z-20 hover:w-max hover:max-w-[280px] hover:-translate-y-1/2 hover:overflow-visible hover:whitespace-normal hover:break-all hover:rounded-[6px] hover:border hover:px-2 hover:py-1.5 hover:shadow-lg"
+                        style={{ background: "var(--panel)" }}
+                        title={creator.email}
+                      >
                         {creator.email || "\u2014"}
                       </span>
                       <CopyButton value={creator.email} title="Copy email" />

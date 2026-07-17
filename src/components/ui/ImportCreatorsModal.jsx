@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Upload, FileText, AlertCircle, CheckCircle2, Link2, RefreshCw, Unlink } from "lucide-react";
 import Modal from "../ui/Modal";
 import { parseCsvImport, mergeCreators } from "../../utils/csvImport";
+import { excelFileToCsv, isExcelFile } from "../../utils/xlsxImport";
 import { useCreators } from "../../hooks/useCreators";
 import { useToast } from "../../hooks/useToast";
 import { timeAgo } from "../../utils/format";
@@ -64,10 +65,12 @@ export default function ImportCreatorsModal({ open, onClose }) {
   const [syncSummary, setSyncSummary] = useState(null); // { added, updated, removed }
   const [mirrorMode, setMirrorMode] = useState(() => Boolean(sheetLink?.mirror));
   const [editingLink, setEditingLink] = useState(false);
+  const [linkType, setLinkType] = useState(() => sheetLink?.type || "excel");
   const syncing = syncStatus === "syncing";
 
   // ── One-time "add creators from another sheet" state ──
   const [importLinkInput, setImportLinkInput] = useState("");
+  const [importLinkType, setImportLinkType] = useState("excel");
   const [importRunError, setImportRunError] = useState("");
   const [importSummary, setImportSummary] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -88,7 +91,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
     onClose();
   }
 
-  function handleFileChange(e) {
+  async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
@@ -96,26 +99,30 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setErrors([]);
     setPreview(null);
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target.result;
-      const { rows, errors: parseErrors } = parseCsvImport(text);
+    let text;
+    try {
+      text = isExcelFile(file) ? await excelFileToCsv(file) : await file.text();
+    } catch (err) {
+      setErrors([{ message: `Couldn't read that file: ${err.message || "unknown error"}` }]);
+      setStage(STAGES.ERRORS);
+      return;
+    }
 
-      setErrors(parseErrors);
+    const { rows, errors: parseErrors } = parseCsvImport(text);
 
-      if (rows.length === 0) {
-        // Nothing usable at all — nothing to preview/import.
-        setStage(STAGES.ERRORS);
-        return;
-      }
+    setErrors(parseErrors);
 
-      // Build the preview from whatever rows parsed cleanly; rows with
-      // errors are already excluded from `rows` and just get listed above.
-      const { merged, added, skipped } = mergeCreators(creators, rows);
-      setPreview({ merged, added, skipped });
-      setStage(STAGES.PREVIEW);
-    };
-    reader.readAsText(file, "UTF-8");
+    if (rows.length === 0) {
+      // Nothing usable at all — nothing to preview/import.
+      setStage(STAGES.ERRORS);
+      return;
+    }
+
+    // Build the preview from whatever rows parsed cleanly; rows with
+    // errors are already excluded from `rows` and just get listed above.
+    const { merged, added, skipped } = mergeCreators(creators, rows);
+    setPreview({ merged, added, skipped });
+    setStage(STAGES.PREVIEW);
   }
 
   function handleConfirmImport() {
@@ -133,11 +140,11 @@ export default function ImportCreatorsModal({ open, onClose }) {
   // ── Live sheet link handlers ── (delegate to the shared syncNow/unlinkSheet
   // in CreatorsContext — same function the silent background auto-sync
   // uses — so behavior is identical and the header pill stays in sync)
-  async function runSync(rawUrl) {
+  async function runSync(rawUrl, type) {
     setLinkError("");
     setSyncSummary(null);
     try {
-      const { added, updated, removed, rowErrors } = await syncNow(rawUrl, { mirror: mirrorMode });
+      const { added, updated, removed, rowErrors } = await syncNow(rawUrl, { mirror: mirrorMode, type });
       setEditingLink(false);
       setSyncSummary({ added, updated, removed, rowErrors });
       showToast(
@@ -153,12 +160,15 @@ export default function ImportCreatorsModal({ open, onClose }) {
 
   function handleConnect() {
     if (!linkInput.trim()) return;
-    runSync(linkInput.trim());
+    runSync(linkInput.trim(), linkType);
   }
 
   function handleSyncNow() {
     if (!sheetLink?.url) return;
-    runSync(sheetLink.url);
+    // Re-syncs using whatever type the link was originally connected as —
+    // not whatever the toggle currently shows, since that's only for
+    // connecting a new/different link.
+    runSync(sheetLink.url, sheetLink.type || "google_sheet");
   }
 
   function handleUnlink() {
@@ -188,7 +198,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setImportRunError("");
     setImportSummary(null);
     try {
-      const { added, updated, rowErrors } = await importFromSheet(importLinkInput.trim());
+      const { added, updated, rowErrors } = await importFromSheet(importLinkInput.trim(), { type: importLinkType });
       setImportSummary({ added, updated, rowErrors });
       showToast(`${added} creator${added === 1 ? "" : "s"} added, ${updated} updated from that sheet`, true);
     } catch (err) {
@@ -271,7 +281,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
                   {fileName}
                 </span>
               ) : (
-                <>Drag & drop your CSV here, or</>
+                <>Drag & drop your Excel or CSV file here, or</>
               )}
             </div>
 
@@ -283,14 +293,14 @@ export default function ImportCreatorsModal({ open, onClose }) {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="sr-only"
                 onChange={handleFileChange}
               />
             </label>
 
             <p className="text-[11px]" style={{ color: "var(--ink3)" }}>
-              CSV exported from Google Sheets only
+              .xlsx, .xls, or .csv \u2014 works with an Excel export or a Google Sheets export
             </p>
           </div>
 
@@ -419,9 +429,17 @@ export default function ImportCreatorsModal({ open, onClose }) {
               className="mb-4 rounded-[10px] border p-3.5"
               style={{ borderColor: "var(--ln)", background: "var(--up)" }}
             >
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--ink)" }}>
-                <Link2 size={13} style={{ color: "var(--am)" }} />
-                Linked sheet
+              <div className="mb-1 flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--ink)" }}>
+                  <Link2 size={13} style={{ color: "var(--am)" }} />
+                  Linked {sheetLink.type === "excel" ? "Excel file" : "Google Sheet"}
+                </div>
+                <span
+                  className="rounded-full px-2 py-[2px] text-[9.5px] font-semibold uppercase tracking-[.04em]"
+                  style={{ background: "var(--panel)", color: "var(--ink3)" }}
+                >
+                  {sheetLink.type === "excel" ? "Excel" : "Sheets"}
+                </span>
               </div>
               <div
                 className="mb-2 truncate rounded-[6px] px-2.5 py-1.5 text-[11px]"
@@ -436,23 +454,56 @@ export default function ImportCreatorsModal({ open, onClose }) {
             </div>
           ) : isAdmin ? (
             <div className="mb-4">
+              <div className="mb-3 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLinkType("excel")}
+                  className="flex-1 rounded-[7px] border px-3 py-2 text-xs font-medium transition-colors"
+                  style={
+                    linkType === "excel"
+                      ? { borderColor: "var(--am)", background: "rgba(30,111,224,.08)", color: "var(--am)" }
+                      : { borderColor: "var(--ln)", color: "var(--ink2)" }
+                  }
+                >
+                  Excel (SharePoint/OneDrive)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLinkType("google_sheet")}
+                  className="flex-1 rounded-[7px] border px-3 py-2 text-xs font-medium transition-colors"
+                  style={
+                    linkType === "google_sheet"
+                      ? { borderColor: "var(--am)", background: "rgba(30,111,224,.08)", color: "var(--am)" }
+                      : { borderColor: "var(--ln)", color: "var(--ink2)" }
+                  }
+                >
+                  Google Sheet
+                </button>
+              </div>
+
               <label
                 className="mb-1.5 block text-xs font-medium"
                 style={{ color: "var(--ink2)" }}
               >
-                {editingLink ? "New Google Sheet URL" : "Google Sheet URL"}
+                {editingLink ? "New URL" : "URL"}
               </label>
               <input
                 type="text"
                 value={linkInput}
                 onChange={(e) => setLinkInput(e.target.value)}
-                placeholder="https://docs.google.com/spreadsheets/d/..."
+                placeholder={
+                  linkType === "excel"
+                    ? "https://yourcompany-my.sharepoint.com/...?download=1"
+                    : "https://docs.google.com/spreadsheets/d/..."
+                }
                 className="w-full rounded-[8px] border px-3 py-2.5 text-xs outline-none"
                 style={{ borderColor: "var(--ln)", color: "var(--ink)" }}
                 autoFocus={editingLink}
               />
               <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: "var(--ink3)" }}>
-                {editingLink
+                {linkType === "excel"
+                  ? 'Share the file as "Anyone with the link can view," then use the direct-download version of that link (ending in ?download=1) — not the normal share link. This becomes the one file the whole team syncs from.'
+                  : editingLink
                   ? "Paste the URL of the sheet you want to connect instead. Syncing will match/add/update against this new sheet."
                   : 'Set sharing to "Anyone with the link can view". We\'ll read every tab in the sheet. A direct published CSV link (single tab only) also works. This becomes the one sheet the whole team syncs from.'}
               </p>
@@ -629,17 +680,48 @@ export default function ImportCreatorsModal({ open, onClose }) {
             Master sheet tab.
           </div>
 
+          <div className="mb-3 flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setImportLinkType("excel")}
+              className="flex-1 rounded-[7px] border px-3 py-2 text-xs font-medium transition-colors"
+              style={
+                importLinkType === "excel"
+                  ? { borderColor: "var(--am)", background: "rgba(30,111,224,.08)", color: "var(--am)" }
+                  : { borderColor: "var(--ln)", color: "var(--ink2)" }
+              }
+            >
+              Excel (SharePoint/OneDrive)
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportLinkType("google_sheet")}
+              className="flex-1 rounded-[7px] border px-3 py-2 text-xs font-medium transition-colors"
+              style={
+                importLinkType === "google_sheet"
+                  ? { borderColor: "var(--am)", background: "rgba(30,111,224,.08)", color: "var(--am)" }
+                  : { borderColor: "var(--ln)", color: "var(--ink2)" }
+              }
+            >
+              Google Sheet
+            </button>
+          </div>
+
           <label
             className="mb-1.5 block text-xs font-medium"
             style={{ color: "var(--ink2)" }}
           >
-            Google Sheet URL to import from
+            URL to import from
           </label>
           <input
             type="text"
             value={importLinkInput}
             onChange={(e) => setImportLinkInput(e.target.value)}
-            placeholder="https://docs.google.com/spreadsheets/d/..."
+            placeholder={
+              importLinkType === "excel"
+                ? "https://yourcompany-my.sharepoint.com/...?download=1"
+                : "https://docs.google.com/spreadsheets/d/..."
+            }
             className="mb-4 w-full rounded-[8px] border px-3 py-2.5 text-xs outline-none"
             style={{ borderColor: "var(--ln)", color: "var(--ink)" }}
           />
