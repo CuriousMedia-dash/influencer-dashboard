@@ -79,7 +79,7 @@ export default function Login() {
         </form>
 
         <p className="mt-4 text-center text-[11px]" style={{ color: "#8FA3BC" }}>
-          New here? We don't do self sign-up — sweet-talk your admin into an invite. You'll get a one-time email to set your password, then you're in for good.
+          New here? We don't do self sign-up — sweet-talk your admin into getting your credentials. 
         </p>
       </div>
     </div>
