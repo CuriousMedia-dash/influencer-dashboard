@@ -48,6 +48,22 @@ export function isUrl(s) {
   }
 }
 
+/**
+ * Turns raw pasted text into a usable link href, or "" if it's genuinely
+ * not a link. Unlike isUrl() above, this is forgiving of the extremely
+ * common case where someone pastes a link without "https://" in front
+ * (e.g. "instagram.com/p/abc123") \u2014 those are still real links, just
+ * missing a protocol, so they're treated as https:// rather than
+ * silently rendered as plain, non-clickable text.
+ */
+export function toHref(raw) {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  if (isUrl(s)) return s;
+  if (isUrl(`https://${s}`)) return `https://${s}`;
+  return "";
+}
+
 export function inTier(followers, activeTierSet) {
   if (activeTierSet.size === 0) return true;
   for (const t of activeTierSet) {
