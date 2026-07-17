@@ -3,6 +3,7 @@ import Badge from "../ui/Badge";
 import TierBadge from "../ui/TierBadge";
 import EditableCell from "../ui/EditableCell";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
+import CopyButton from "../ui/CopyButton";
 import { fmt, creatorPlatforms, hex2rgba } from "../../utils/format";
 import {
   LANG_COLORS,
@@ -232,10 +233,13 @@ export default function CreatorsTable({
 
                     {/* Email */}
                     <td
-                      className="border-b px-3 py-2 break-words"
+                      className="border-b px-3 py-2"
                       style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
                     >
-                      {r.email}
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 flex-1 break-words">{r.email}</span>
+                        <CopyButton value={r.email} title="Copy email" />
+                      </div>
                     </td>
 
                     

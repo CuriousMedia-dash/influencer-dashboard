@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import { Lock, Unlock, X, ArrowUpDown, CreditCard, Mail, Pencil, Check, Flag } from "lucide-react";
 import EditableCell from "../ui/EditableCell";
+import CopyButton from "../ui/CopyButton";
 import EditPopover from "../ui/EditPopover";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import LockConfirmModal from "./LockConfirmModal";
 import PaymentInfoDialog from "./PaymentInfoDialog";
-import { fmt, hex2rgba, groupByPlatform, parseN, summarizePaymentInfo, isUrl } from "../../utils/format";
+import { fmt, hex2rgba, groupByPlatform, parseN, summarizePaymentInfo, toHref } from "../../utils/format";
 import { openPaymentEmail } from "../../utils/email";
 import { useToast } from "../../hooks/useToast";
 import {
@@ -63,9 +64,9 @@ function NameLinkCell({ creator, link, onSaveLink }) {
 
   return (
     <div className="flex min-w-0 items-center gap-1.5">
-      {hasLink && isUrl(link) ? (
+      {hasLink && toHref(link) ? (
         <a
-          href={link}
+          href={toHref(link)}
           target="_blank"
           rel="noreferrer"
           title={link}
@@ -329,9 +330,12 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td className="overflow-hidden border-b px-3 py-2" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
-                    <span className="block overflow-hidden text-ellipsis whitespace-nowrap" title={creator.email}>
-                      {creator.email || "\u2014"}
-                    </span>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" title={creator.email}>
+                        {creator.email || "\u2014"}
+                      </span>
+                      <CopyButton value={creator.email} title="Copy email" />
+                    </div>
                   </td>
 
                   <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
