@@ -322,6 +322,12 @@ export default function CampaignOverview({ campaign, onUpdate }) {
         value={campaign.poc || campaign.owner}
         onSave={(v) => onUpdate({ owner: v, poc: v })}
       />
+      <OverviewField
+        label="Brand Email (login)"
+        value={campaign.brandEmail}
+        displayValue={campaign.brandEmail || "Not set \u2014 brand can't log in yet"}
+        onSave={(v) => onUpdate({ brandEmail: v })}
+      />
       <LiveLinkCountField campaign={campaign} onUpdate={onUpdate} />
       <div
         className="rounded-[11px] border px-3.5 py-3"

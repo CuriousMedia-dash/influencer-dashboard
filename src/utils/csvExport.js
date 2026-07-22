@@ -116,7 +116,6 @@ const BRAND_DASHBOARD_CSV_COLUMNS = [
   { key: "brandLockedLabel", label: "Locked Status" },
   { key: "executionStage", label: "Execution Stage" },
   { key: "liveLink", label: "Live Video Link" },
-  { key: "brandViewership", label: "Viewership" },
 ];
 
 export function brandDashboardToCsv(rows) {

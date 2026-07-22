@@ -22,6 +22,7 @@ const SORT_OPTIONS = [
   { value: "none", label: "Default order" },
   { value: "liveDate", label: "Live date" },
   { value: "paymentScheduledDate", label: "Payment scheduled date" },
+  { value: "videoDeadline", label: "Video deadline" },
   { value: "name", label: "Creator name" },
   { value: "platform", label: "Platform" },
   { value: "commercial", label: "Commercial" },
@@ -43,7 +44,7 @@ const COLS = [
   ["Locked Price", 100],
   ["Locked Status", 96],
   ["Execution Stage", 150],
-  ["Video Timeline", 195],
+  ["Video Deadline", 130],
   ["Live Video Link", 120],
   ["Payment Info", 175],
   ["Payment Status", 210],
@@ -136,34 +137,6 @@ function NameLinkCell({ creator, link, onSaveLink }) {
  * still shows as two rows, sitting right next to each other rather than
  * split across sections.
  */
-function fmtTimelineDate(d) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
-/**
- * Opens a mail draft addressed directly to the creator (unlike the
- * payment-email button, which leaves "to" blank) confirming their video
- * timeline for this campaign.
- */
-function sendVideoTimelineEmail({ creator, campaignName, startDate, endDate }) {
-  const from = fmtTimelineDate(startDate);
-  const to = fmtTimelineDate(endDate);
-  const timelineText = from && to ? `${from} to ${to}` : "to be confirmed";
-
-  const subject = `Video timeline \u2014 ${campaignName || "Campaign"}`;
-  const body = [
-    `Hi ${creator?.name || "there"},`,
-    ``,
-    `Here's your video timeline for ${campaignName || "the campaign"}: ${timelineText}.`,
-    ``,
-    `Please plan your content around this window and let us know if anything doesn't work.`,
-    ``,
-    `Thanks!`,
-  ].join("\n");
-
-  window.location.href = `mailto:${encodeURIComponent(creator?.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
 
 export default function CampaignCreatorsTable({
   links,
@@ -204,6 +177,13 @@ export default function CampaignCreatorsTable({
         case "paymentScheduledDate":
           av = a.item.paymentScheduledDate || "";
           bv = b.item.paymentScheduledDate || "";
+          if (!av && !bv) return 0;
+          if (!av) return 1;
+          if (!bv) return -1;
+          return av.localeCompare(bv) * dir;
+        case "videoDeadline":
+          av = a.item.videoTimelineStart || "";
+          bv = b.item.videoTimelineStart || "";
           if (!av && !bv) return 0;
           if (!av) return 1;
           if (!bv) return -1;
@@ -471,42 +451,14 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex flex-1 flex-col gap-1">
-                        <input
-                          type="date"
-                          value={link.videoTimelineStart || ""}
-                          onChange={(e) => onUpdateLink(link.creatorId, { videoTimelineStart: e.target.value })}
-                          className="w-full rounded-[6px] border px-1.5 py-1 text-[10px] outline-none"
-                          style={{ borderColor: "var(--ln)", color: link.videoTimelineStart ? "var(--ink)" : "var(--ink3)" }}
-                          title="Start date"
-                        />
-                        <input
-                          type="date"
-                          value={link.videoTimelineEnd || ""}
-                          onChange={(e) => onUpdateLink(link.creatorId, { videoTimelineEnd: e.target.value })}
-                          className="w-full rounded-[6px] border px-1.5 py-1 text-[10px] outline-none"
-                          style={{ borderColor: "var(--ln)", color: link.videoTimelineEnd ? "var(--ink)" : "var(--ink3)" }}
-                          title="End date"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        title="Email creator their video timeline"
-                        onClick={() =>
-                          sendVideoTimelineEmail({
-                            creator,
-                            campaignName,
-                            startDate: link.videoTimelineStart,
-                            endDate: link.videoTimelineEnd,
-                          })
-                        }
-                        className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors"
-                        style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
-                      >
-                        <Mail size={11} />
-                      </button>
-                    </div>
+                    <input
+                      type="date"
+                      value={link.videoTimelineStart || ""}
+                      onChange={(e) => onUpdateLink(link.creatorId, { videoTimelineStart: e.target.value })}
+                      className="w-full rounded-[6px] border px-1.5 py-1 text-[10px] outline-none"
+                      style={{ borderColor: "var(--ln)", color: link.videoTimelineStart ? "var(--ink)" : "var(--ink3)" }}
+                      title="Video deadline"
+                    />
                   </td>
 
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>

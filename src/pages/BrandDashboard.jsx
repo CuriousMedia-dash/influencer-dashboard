@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../hooks/useAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2 } from "lucide-react";
+import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut, AlertTriangle } from "lucide-react";
 
-// The signature idea on this page: locked rows read like a confirmed
-// line in a ledger. Uses the app's own ink-navy (already the color of
-// every heading here) rather than introducing an unrelated new hue —
-// solid fill, real contrast, not a muted outline.
-const LOCK_COLOR = "#10243E";
-const LOCK_WASH = "rgba(16,36,62,.05)";
-const LOCK_BORDER = "rgba(16,36,62,.16)";
+// Plain, simple styling — matches the green already used everywhere else
+// in the app for confirmed/paid/locked states, no special new treatment.
+const LOCK_COLOR = "#2BAE66";
+const LOCK_WASH = "rgba(43,174,102,.08)";
+const LOCK_BORDER = "rgba(43,174,102,.3)";
 
 const BRAND_THEME_KEY = "cm_brand_theme";
 
@@ -47,7 +46,6 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
       className="relative overflow-hidden rounded-[11px] border px-3.5 py-3"
       style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
     >
-      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: "var(--am)", opacity: 0.5 }} />
       <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[.08em]" style={{ color: "var(--ink3)" }}>
         {label}
       </div>
@@ -278,11 +276,56 @@ export default function BrandDashboard() {
   return <BrandDashboardView key={campaignId} campaignId={campaignId} />;
 }
 
+// Confirms before locking — locking is permanent, so this is the one and
+// only chance to back out.
+function ConfirmLockModal({ creatorName, onConfirm, onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(16,36,62,.45)" }}>
+      <div
+        className="w-full max-w-sm rounded-[16px] border p-6 text-center shadow-[0_20px_60px_rgba(16,36,62,.3)]"
+        style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
+      >
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full" style={{ background: LOCK_WASH }}>
+          <AlertTriangle size={20} style={{ color: LOCK_COLOR }} />
+        </div>
+        <h3 className="mb-1.5 text-base font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)" }}>
+          Lock {creatorName}?
+        </h3>
+        <p className="mb-5 text-sm leading-relaxed" style={{ color: "var(--ink2)" }}>
+          This can't be undone. Once locked, this creator's Final Cost is permanently frozen and the lock can't be
+          reversed by anyone, including you.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-[9px] border py-2.5 text-sm font-medium"
+            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 rounded-[9px] py-2.5 text-sm font-semibold text-white"
+            style={{ background: LOCK_COLOR }}
+          >
+            Yes, lock it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandDashboardView({ campaignId }) {
+  const { user, signOut } = useAuth();
   const [data, setData] = useState(undefined);
   const [theme, setTheme] = useState(loadBrandTheme);
   const [digestOpen, setDigestOpen] = useState(false);
   const [justSent, setJustSent] = useState(false);
+  const [confirmLockRow, setConfirmLockRow] = useState(null);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -309,13 +352,27 @@ function BrandDashboardView({ campaignId }) {
   }, [theme]);
 
   function updateLinkField(creatorId, field, value) {
+    const previousRow = data.rows.find((r) => r.creatorId === creatorId);
     setData((prev) => ({
       ...prev,
       rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, [field]: value } : r)),
     }));
     supabase
       .rpc("update_brand_dashboard_link", { p_campaign_id: campaignId, p_creator_id: creatorId, p_field: field, p_value: String(value) })
-      .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
+      .then(({ error }) => {
+        if (error) {
+          console.error("Failed to save brand dashboard change:", error.message);
+          // The server refused this (e.g. already locked, or not the
+          // brand trying to lock) — undo the optimistic change and say
+          // why, rather than silently pretending it worked.
+          setData((prev) => ({
+            ...prev,
+            rows: prev.rows.map((r) => (r.creatorId === creatorId ? previousRow : r)),
+          }));
+          setSaveError(error.message || "That change couldn't be saved.");
+          setTimeout(() => setSaveError(""), 4000);
+        }
+      });
   }
 
   function updateMetaField(field, value) {
@@ -331,6 +388,12 @@ function BrandDashboardView({ campaignId }) {
     setTimeout(() => setJustSent(false), 3000);
     await supabase.rpc("mark_brand_digest_sent", { p_campaign_id: campaignId });
     setData((prev) => ({ ...prev, campaign: { ...prev.campaign, brandDigestSentAt: new Date().toISOString() } }));
+  }
+
+  function handleConfirmLock() {
+    if (!confirmLockRow) return;
+    updateLinkField(confirmLockRow.creatorId, "brandLocked", true);
+    setConfirmLockRow(null);
   }
 
   // New = added after the last digest was sent. Sorted to the top so
@@ -401,6 +464,14 @@ function BrandDashboardView({ campaignId }) {
         />
       )}
 
+      {confirmLockRow && (
+        <ConfirmLockModal
+          creatorName={confirmLockRow.name}
+          onConfirm={handleConfirmLock}
+          onCancel={() => setConfirmLockRow(null)}
+        />
+      )}
+
       <div className="mx-auto max-w-6xl">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -410,24 +481,26 @@ function BrandDashboardView({ campaignId }) {
             <h1 className="mt-1 text-[32px] font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)", letterSpacing: "-0.01em" }}>
               {campaign.name}
             </h1>
+            {user?.email && (
+              <div className="mt-1 text-[11px]" style={{ color: "var(--ink3)" }}>
+                Signed in as {user.email}
+                {campaign.isBrandViewer ? " (brand)" : " (team preview)"}
+              </div>
+            )}
           </div>
 
           <div className="no-print flex items-center gap-2">
+            {saveError && (
+              <span className="max-w-[240px] rounded-[8px] px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(224,82,75,.1)", color: "#E0524B" }}>
+                {saveError}
+              </span>
+            )}
             {justSent && (
               <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium" style={{ background: "rgba(43,174,102,.1)", color: "#2BAE66" }}>
                 <CheckCircle2 size={13} />
                 Draft opened
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border transition-colors"
-              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
-            >
-              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
             <button
               type="button"
               onClick={() => downloadCsv(`${campaign.name || "brand-dashboard"}.csv`, brandDashboardToCsv(rows))}
@@ -439,12 +512,30 @@ function BrandDashboardView({ campaignId }) {
             </button>
             <button
               type="button"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border transition-colors"
+              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
+            >
+              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+            <button
+              type="button"
               onClick={() => setDigestOpen(true)}
               className="flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_2px_10px_rgba(30,111,224,.35)] transition-transform hover:-translate-y-[1px]"
               style={{ background: "var(--am)" }}
             >
               <Send size={13} />
               Forward locked creators
+            </button>
+            <button
+              type="button"
+              onClick={signOut}
+              title="Sign out"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border transition-colors"
+              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
+            >
+              <LogOut size={14} />
             </button>
           </div>
         </div>
@@ -460,7 +551,7 @@ function BrandDashboardView({ campaignId }) {
           <SlabCard label="Point of Contact (POC)" editable value={campaign.brandPoc} onChange={(v) => updateMetaField("brandPoc", v)} placeholder={campaign.poc || "\u2014"} />
         </div>
 
-        <div className="overflow-auto rounded-[14px] border shadow-[0_1px_3px_rgba(16,36,62,.06)]" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
+        <div className="overflow-auto rounded-[14px] border" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
           <table className="w-full border-collapse text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
@@ -478,9 +569,7 @@ function BrandDashboardView({ campaignId }) {
             <tbody>
               {rows.map((row) => {
                 const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
-                const rowStyle = row.brandLocked
-                  ? { background: LOCK_WASH, boxShadow: `inset 4px 0 0 ${LOCK_COLOR}` }
-                  : {};
+                const rowStyle = {};
 
                 return (
                   <tr key={row.creatorId} style={rowStyle}>
@@ -545,8 +634,10 @@ function BrandDashboardView({ campaignId }) {
                           value={row.brandFinalCost ?? ""}
                           onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
                           placeholder="0"
-                          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
-                          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                          disabled={row.brandLocked}
+                          title={row.brandLocked ? "Frozen — this creator is locked" : undefined}
+                          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                         />
                       </div>
                     </td>
@@ -563,19 +654,35 @@ function BrandDashboardView({ campaignId }) {
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <button
-                        type="button"
-                        onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
-                        className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
-                        style={
-                          row.brandLocked
-                            ? { borderColor: LOCK_COLOR, color: "#FFFFFF", background: LOCK_COLOR }
-                            : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
-                        }
-                      >
-                        {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                        {row.brandLocked ? "Locked" : "Unlocked"}
-                      </button>
+                      {row.brandLocked ? (
+                        <span
+                          title="Locked permanently — cannot be undone"
+                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
+                          style={{ borderColor: LOCK_COLOR, color: LOCK_COLOR, background: LOCK_WASH }}
+                        >
+                          <Lock size={11} />
+                          Locked
+                        </span>
+                      ) : campaign.isBrandViewer ? (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmLockRow(row)}
+                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                          style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }}
+                        >
+                          <Unlock size={11} />
+                          Unlocked
+                        </button>
+                      ) : (
+                        <span
+                          title="Only the brand can lock a creator"
+                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium opacity-60"
+                          style={{ borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }}
+                        >
+                          <Unlock size={11} />
+                          Unlocked
+                        </span>
+                      )}
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>

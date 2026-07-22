@@ -14,6 +14,7 @@ import Workspace from "./pages/Workspace";
 import SharedCampaignView from "./pages/SharedCampaignView";
 import BrandDashboard from "./pages/BrandDashboard";
 import Login from "./pages/Login";
+import BrandLogin from "./pages/BrandLogin";
 import SetPassword from "./pages/SetPassword";
 
 // Gates the internal app behind a valid Supabase session. The public
@@ -43,6 +44,36 @@ function AuthGate({ children }) {
 
   if (!session) {
     return <Login />;
+  }
+
+  return children;
+}
+
+// Brand Dashboard now requires a real login too — the brand's own account,
+// set up the same way as a team invite (one-time email link → they pick
+// a password → sign in with email + password after that). This is a
+// separate gate from AuthGate above since it shows a different login
+// screen, but reuses the exact same session/auth system underneath.
+function BrandAuthGate({ children }) {
+  const { session, loading, needsPasswordSetup } = useAuth();
+
+  if (loading) {
+    return (
+      <div
+        className="flex min-h-screen items-center justify-center text-sm"
+        style={{ background: "#E7F0FA", color: "#5B7390" }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (needsPasswordSetup && session) {
+    return <SetPassword />;
+  }
+
+  if (!session) {
+    return <BrandLogin />;
   }
 
   return children;
@@ -87,9 +118,9 @@ export default function App() {
                       links already sent out before the brand dashboard. */}
                   <Route path="/share/:token" element={<SharedCampaignView />} />
 
-                  {/* Public, interactive brand dashboard — no login
-                      required, deliberately outside <AuthGate>. */}
-                  <Route path="/brand/:token" element={<BrandDashboard />} />
+                  {/* Brand Dashboard now requires the brand's own login —
+                      no longer a public, anyone-with-the-link route. */}
+                  <Route path="/brand/:token" element={<BrandAuthGate><BrandDashboard /></BrandAuthGate>} />
 
                   <Route
                     path="/*"
