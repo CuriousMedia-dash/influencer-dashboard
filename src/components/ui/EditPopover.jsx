@@ -81,7 +81,7 @@ export default function EditPopover({
             background: "var(--up)",
             borderColor: "var(--ln)",
             color: "var(--ink)",
-            fontFamily: "Inter, sans-serif",
+            fontFamily: "'League Spartan', sans-serif",
           }}
           onFocus={(e) =>
             (e.target.style.borderColor = "var(--am)")
@@ -102,7 +102,7 @@ export default function EditPopover({
             background: "var(--up)",
             borderColor: "var(--ln)",
             color: "var(--ink)",
-            fontFamily: "Inter, sans-serif",
+            fontFamily: "'League Spartan', sans-serif",
           }}
           onFocus={(e) => (e.target.style.borderColor = "var(--am)")}
           onBlur={(e) => (e.target.style.borderColor = "var(--ln)")}

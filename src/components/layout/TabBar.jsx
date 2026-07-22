@@ -26,7 +26,7 @@ export default function TabBar({ active, onChange, campaignCount }) {
               background: on ? "var(--am)" : "transparent",
               borderColor: on ? "var(--am)" : "transparent",
               color: on ? "#FFFFFF" : "var(--ink2)",
-              fontFamily: "Inter, sans-serif",
+              fontFamily: "'League Spartan', sans-serif",
             }}
           >
             <span>{t.icon}</span>

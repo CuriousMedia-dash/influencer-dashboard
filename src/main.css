@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=League+Spartan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @import "tailwindcss";
 
@@ -12,6 +12,14 @@
   --up:#EAF2FA;
   --ln:#D7E6F2;
   --am:#1E6FE0;
+
+  /* Single lever for the whole app's overall size — text, buttons, icons,
+     spacing, all of it, scaled together and proportionally (unlike
+     changing font-size alone, which wouldn't touch this app's fixed-pixel
+     Tailwind sizes at all). Change just this number to scale everything
+     up or down app-wide. 1 = default size, 1.08 = 8% bigger, 0.95 = 5%
+     smaller, etc. */
+  --app-scale: 1.08;
 }
 
 /* Dark mode — same tokens, inverted palette. Toggled via
@@ -31,8 +39,9 @@
 body{
   background:var(--bg-page);
   margin:0;
-  font-family:Inter,sans-serif;
+  font-family:'League Spartan',sans-serif;
   transition:background-color .15s ease;
+  zoom:var(--app-scale);
 }
 
 /* Dual-handle follower range slider thumbs — ported from approved HTML's
@@ -72,7 +81,7 @@ body{
   border-radius:7px;
   padding:8px 10px;
   font-size:12px;
-  font-family:Inter,sans-serif;
+  font-family:'League Spartan',sans-serif;
   outline:none;
 }
 .ep-text-input:focus{

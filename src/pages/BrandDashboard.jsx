@@ -4,10 +4,16 @@ import { supabase } from "../lib/supabaseClient";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download, Plus, Mail, Upload, Image as ImageIcon, X } from "lucide-react";
+import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2 } from "lucide-react";
 
-// The brand dashboard's light/dark toggle is entirely its own — separate
-// from the main app's theme.
+// The signature idea on this page: locked rows read like a confirmed
+// line in a ledger. Uses the app's own ink-navy (already the color of
+// every heading here) rather than introducing an unrelated new hue —
+// solid fill, real contrast, not a muted outline.
+const LOCK_COLOR = "#10243E";
+const LOCK_WASH = "rgba(16,36,62,.05)";
+const LOCK_BORDER = "rgba(16,36,62,.16)";
+
 const BRAND_THEME_KEY = "cm_brand_theme";
 
 function loadBrandTheme() {
@@ -31,42 +37,18 @@ function parseAmount(v) {
 
 function fmtDate(d) {
   if (!d) return "";
-  return new Date(d).toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-/**
- * Opens a mail draft (blank "to" — filled in by whoever's sending, same
- * pattern as the internal app's payment-email button) confirming a
- * locked creator and the final cost, addressed to the brand.
- */
-function sendLockConfirmationEmail({ campaignName, creatorName, finalCost }) {
-  const subject = `Locked: ${creatorName} \u2014 ${campaignName || "Campaign"}`;
-  const body = [
-    `Hi,`,
-    ``,
-    `Confirming that we've locked ${creatorName} for this campaign.`,
-    `Final cost: \u20b9${fmt(parseAmount(finalCost))}`,
-    ``,
-    `Let us know if anything looks off.`,
-  ].join("\n");
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 // Slab card used for the top summary row.
 function SlabCard({ label, children, editable, value, onChange, type = "text", placeholder }) {
   return (
     <div
-      className="rounded-[11px] border px-3.5 py-3"
+      className="relative overflow-hidden rounded-[11px] border px-3.5 py-3"
       style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
     >
-      <div
-        className="mb-1.5 text-[11px] uppercase tracking-[.07em]"
-        style={{ color: "var(--ink3)" }}
-      >
+      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: "var(--am)", opacity: 0.5 }} />
+      <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[.08em]" style={{ color: "var(--ink3)" }}>
         {label}
       </div>
       {editable ? (
@@ -82,88 +64,6 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
         <div className="text-base font-semibold" style={{ color: "var(--ink)" }}>
           {children}
         </div>
-      )}
-    </div>
-  );
-}
-
-// Upload/replace/view the "brand sent approval" screenshot. Anyone with
-// the link can upload or replace it (agency or brand) — there's no login
-// here to restrict it further, matching how the rest of this page works.
-function ApprovalScreenshotUpload({ campaignId, creatorId, screenshotUrl, onChange }) {
-  const fileRef = useRef(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-
-  async function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadError("");
-    try {
-      const ext = file.name.split(".").pop() || "png";
-      const path = `${campaignId}/${creatorId}-${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("brand-approvals")
-        .upload(path, file, { upsert: true });
-      if (uploadErr) throw uploadErr;
-      const { data } = supabase.storage.from("brand-approvals").getPublicUrl(path);
-      onChange(data.publicUrl);
-    } catch (err) {
-      setUploadError(err.message || "Upload failed \u2014 try again.");
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-      {screenshotUrl ? (
-        <>
-          <a href={screenshotUrl} target="_blank" rel="noreferrer" title="View approval screenshot">
-            <img
-              src={screenshotUrl}
-              alt="Approval screenshot"
-              className="h-[22px] w-[22px] rounded-[5px] border object-cover"
-              style={{ borderColor: "var(--ln)" }}
-            />
-          </a>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            title="Replace screenshot"
-            className="flex h-[20px] w-[20px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors disabled:opacity-60"
-            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
-          >
-            <Upload size={10} />
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          title="Upload approval screenshot"
-          className="flex items-center gap-1 rounded-[6px] border px-1.5 py-1 text-[10px] transition-colors disabled:opacity-60"
-          style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }}
-        >
-          <ImageIcon size={10} />
-          {uploading ? "Uploading\u2026" : "Add SS"}
-        </button>
-      )}
-      {uploadError && (
-        <span className="text-[9.5px]" style={{ color: "#E0524B" }}>
-          {uploadError}
-        </span>
       )}
     </div>
   );
@@ -190,11 +90,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
       if (e.key === "Escape") onClose();
     }
     function handleClick(e) {
-      if (
-        panelRef.current &&
-        !panelRef.current.contains(e.target) &&
-        !e.target.closest(".locked-cost-trigger")
-      ) {
+      if (panelRef.current && !panelRef.current.contains(e.target) && !e.target.closest(".locked-cost-trigger")) {
         onClose();
       }
     }
@@ -215,13 +111,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
       style={{ top: pos.top, left: pos.left, background: "var(--panel)", borderColor: "var(--ln)" }}
       onClick={(e) => e.stopPropagation()}
     >
-      <h4 className="mb-2 text-xs font-semibold" style={{ color: "var(--ink)" }}>
-        Proposal Cost
-      </h4>
-
-      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>
-        Proposal Cost
-      </label>
+      <h4 className="mb-2 text-xs font-semibold" style={{ color: "var(--ink)" }}>Proposal Cost</h4>
+      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>Proposal Cost</label>
       <div className="mb-2.5 flex items-center gap-1">
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <input
@@ -234,10 +125,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
         />
       </div>
-
-      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>
-        + Reimbursement
-      </label>
+      <label className="mb-1 block text-[10px]" style={{ color: "var(--ink3)" }}>+ Reimbursement</label>
       <div className="mb-2.5 flex items-center gap-1">
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <input
@@ -249,26 +137,16 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
         />
       </div>
-
       <div className="mb-3 text-[11.5px] font-semibold" style={{ color: "var(--ink2)" }}>
-        Total: {"\u20b9"}
-        {fmt(total)}
+        Total: {"\u20b9"}{fmt(total)}
       </div>
-
-      <button
-        type="button"
-        onClick={onClose}
-        className="w-full rounded-[7px] py-[7px] text-xs font-semibold text-white"
-        style={{ background: "var(--am)" }}
-      >
+      <button type="button" onClick={onClose} className="w-full rounded-[7px] py-[7px] text-xs font-semibold text-white" style={{ background: "var(--am)" }}>
         Done
       </button>
     </div>
   );
 }
 
-// The visible cell shows only the Proposal Cost value; Reimbursement + Total
-// live inside the popover, opened by clicking.
 function LockedCostCell({ lockedCost, reimbursement, onChange }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef(null);
@@ -290,7 +168,6 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
           {fmt(parseAmount(lockedCost))}
         </span>
       </button>
-
       {open && (
         <LockedCostPopover
           anchorRef={anchorRef}
@@ -304,21 +181,113 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
   );
 }
 
+// Preview + send the "forward locked creators" digest. Shows exactly what
+// the email will contain before anything opens, so there's no surprise
+// when the mail app pops up.
+function ForwardDigestModal({ campaignName, lockedRows, onClose, onSent }) {
+  const total = lockedRows.reduce((sum, r) => sum + parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost), 0);
+
+  function handleSend() {
+    const subject = `Locked creators \u2014 ${campaignName || "Campaign"}`;
+    const lines = [
+      `Locked creators for ${campaignName || "this campaign"}:`,
+      "",
+      ...lockedRows.map((r) => {
+        const cost = parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost);
+        return `\u2022 ${r.name} \u2014 \u20b9${fmt(cost)}`;
+      }),
+      "",
+      `Total: \u20b9${fmt(total)}`,
+    ];
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
+    onSent();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(16,36,62,.45)" }}>
+      <div
+        className="w-full max-w-md rounded-[16px] border p-6 shadow-[0_20px_60px_rgba(16,36,62,.3)]"
+        style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)" }}>
+              Forward to brand
+            </h3>
+            <p className="mt-0.5 text-xs" style={{ color: "var(--ink3)" }}>
+              Opens your email app with this list pre-filled — you review and send it yourself.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[7px]" style={{ color: "var(--ink3)" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {lockedRows.length === 0 ? (
+          <div className="rounded-[10px] border p-4 text-center text-sm" style={{ borderColor: "var(--ln)", color: "var(--ink3)" }}>
+            No creators are locked yet — lock at least one before forwarding.
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 max-h-[280px] overflow-auto rounded-[10px] border" style={{ borderColor: LOCK_BORDER }}>
+              {lockedRows.map((r, i) => {
+                const cost = parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost);
+                return (
+                  <div
+                    key={r.creatorId}
+                    className="flex items-center justify-between px-3.5 py-2.5 text-sm"
+                    style={{
+                      background: i % 2 === 0 ? LOCK_WASH : "transparent",
+                      borderTop: i === 0 ? "none" : `1px solid ${LOCK_BORDER}`,
+                    }}
+                  >
+                    <span style={{ color: "var(--ink)" }}>{r.name}</span>
+                    <span style={{ color: LOCK_COLOR, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                      {"\u20b9"}{fmt(cost)}
+                    </span>
+                  </div>
+                );
+              })}
+              <div
+                className="flex items-center justify-between px-3.5 py-2.5 text-sm font-semibold"
+                style={{ borderTop: `1px solid ${LOCK_BORDER}`, color: "var(--ink)" }}
+              >
+                <span>Total</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{"\u20b9"}{fmt(total)}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSend}
+              className="flex w-full items-center justify-center gap-2 rounded-[9px] py-2.5 text-sm font-semibold text-white"
+              style={{ background: "var(--am)" }}
+            >
+              <Send size={14} />
+              Open email draft
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BrandDashboard() {
   const { token: campaignId } = useParams();
   return <BrandDashboardView key={campaignId} campaignId={campaignId} />;
 }
 
 function BrandDashboardView({ campaignId }) {
-  const [data, setData] = useState(undefined); // undefined = loading, null = not found
+  const [data, setData] = useState(undefined);
   const [theme, setTheme] = useState(loadBrandTheme);
+  const [digestOpen, setDigestOpen] = useState(false);
+  const [justSent, setJustSent] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data: result, error } = await supabase.rpc("get_brand_dashboard", {
-        p_campaign_id: campaignId,
-      });
+      const { data: result, error } = await supabase.rpc("get_brand_dashboard", { p_campaign_id: campaignId });
       if (cancelled) return;
       if (error || !result || !result.campaign) {
         console.error("Failed to load brand dashboard:", error?.message);
@@ -328,9 +297,7 @@ function BrandDashboardView({ campaignId }) {
       setData(result);
     }
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [campaignId]);
 
   useEffect(() => {
@@ -341,38 +308,49 @@ function BrandDashboardView({ campaignId }) {
     }
   }, [theme]);
 
-  // Fires the write immediately in the background; local state already
-  // reflects the change the instant someone types, so typing never waits
-  // on the network.
   function updateLinkField(creatorId, field, value) {
     setData((prev) => ({
       ...prev,
       rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, [field]: value } : r)),
     }));
     supabase
-      .rpc("update_brand_dashboard_link", {
-        p_campaign_id: campaignId,
-        p_creator_id: creatorId,
-        p_field: field,
-        p_value: String(value),
-      })
-      .then(({ error }) => {
-        if (error) console.error("Failed to save brand dashboard change:", error.message);
-      });
+      .rpc("update_brand_dashboard_link", { p_campaign_id: campaignId, p_creator_id: creatorId, p_field: field, p_value: String(value) })
+      .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
 
   function updateMetaField(field, value) {
     setData((prev) => ({ ...prev, campaign: { ...prev.campaign, [field]: value } }));
     supabase
-      .rpc("update_brand_dashboard_meta", {
-        p_campaign_id: campaignId,
-        p_field: field,
-        p_value: String(value),
-      })
-      .then(({ error }) => {
-        if (error) console.error("Failed to save brand dashboard change:", error.message);
-      });
+      .rpc("update_brand_dashboard_meta", { p_campaign_id: campaignId, p_field: field, p_value: String(value) })
+      .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
+
+  async function handleDigestSent() {
+    setDigestOpen(false);
+    setJustSent(true);
+    setTimeout(() => setJustSent(false), 3000);
+    await supabase.rpc("mark_brand_digest_sent", { p_campaign_id: campaignId });
+    setData((prev) => ({ ...prev, campaign: { ...prev.campaign, brandDigestSentAt: new Date().toISOString() } }));
+  }
+
+  // New = added after the last digest was sent. Sorted to the top so
+  // returning brand viewers immediately see what's changed, without
+  // needing to hunt through creators they've already considered.
+  // This must run on every render (React's Rules of Hooks), so the
+  // "no data yet" case is handled inside the memo, not by skipping it
+  // with an early return above it.
+  const rows = useMemo(() => {
+    if (!data || !data.rows) return [];
+    const digestSentAt = data.campaign?.brandDigestSentAt ? new Date(data.campaign.brandDigestSentAt) : null;
+    const withFlags = data.rows.map((r) => ({
+      ...r,
+      isNew: digestSentAt ? new Date(r.createdAt) > digestSentAt : false,
+    }));
+    return [...withFlags].sort((a, b) => {
+      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
+      return 0;
+    });
+  }, [data]);
 
   if (data === undefined) {
     return (
@@ -386,9 +364,7 @@ function BrandDashboardView({ campaignId }) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6" style={{ background: "#E7F0FA" }}>
         <div className="max-w-sm rounded-[14px] border p-6 text-center" style={{ background: "#fff", borderColor: "#D9E4F2" }}>
-          <h1 className="mb-1.5 text-lg font-semibold" style={{ fontFamily: "Fraunces, serif" }}>
-            Link not valid
-          </h1>
+          <h1 className="mb-1.5 text-lg font-semibold" style={{ fontFamily: "Fraunces, serif" }}>Link not valid</h1>
           <p className="text-sm" style={{ color: "#5B6B82" }}>
             This dashboard link is broken or the campaign no longer exists. Ask for a fresh link from the campaign owner.
           </p>
@@ -397,10 +373,11 @@ function BrandDashboardView({ campaignId }) {
     );
   }
 
-  const { campaign, rows } = data;
+  const { campaign } = data;
+
   const linksPosted = rows.filter((r) => r.liveLink).length;
   const linksExpected = Number(campaign.linksExpected) || rows.length;
-  const lockedProfilesCount = rows.filter((r) => r.brandLocked).length;
+  const lockedRows = rows.filter((r) => r.brandLocked);
 
   return (
     <div data-theme={theme} className="min-h-screen p-6" style={{ background: "var(--bg-page)" }}>
@@ -415,29 +392,38 @@ function BrandDashboardView({ campaignId }) {
         }
       `}</style>
 
+      {digestOpen && (
+        <ForwardDigestModal
+          campaignName={campaign.name}
+          lockedRows={lockedRows}
+          onClose={() => setDigestOpen(false)}
+          onSent={handleDigestSent}
+        />
+      )}
+
       <div className="mx-auto max-w-6xl">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div
-              className="text-[13px] font-semibold uppercase tracking-[.1em]"
-              style={{ color: "var(--am)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
+            <div className="text-[13px] font-semibold uppercase tracking-[.1em]" style={{ color: "var(--am)", fontFamily: "'JetBrains Mono', monospace" }}>
               Brand Dashboard
             </div>
-            <div
-              className="mt-0.5 text-[11px] uppercase tracking-[.13em]"
-              style={{ color: "var(--ink3)", fontFamily: "'JetBrains Mono', monospace" }}
-            >
-              Live {"\u2014"} always shows the latest data
-            </div>
+            <h1 className="mt-1 text-[32px] font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)", letterSpacing: "-0.01em" }}>
+              {campaign.name}
+            </h1>
           </div>
 
           <div className="no-print flex items-center gap-2">
+            {justSent && (
+              <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium" style={{ background: "rgba(43,174,102,.1)", color: "#2BAE66" }}>
+                <CheckCircle2 size={13} />
+                Draft opened
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-              className="flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border transition-colors"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border transition-colors"
               style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
             >
               {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
@@ -445,74 +431,43 @@ function BrandDashboardView({ campaignId }) {
             <button
               type="button"
               onClick={() => downloadCsv(`${campaign.name || "brand-dashboard"}.csv`, brandDashboardToCsv(rows))}
-              className="flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors"
+              className="flex items-center gap-1.5 rounded-[9px] border px-3 py-2 text-[12px] font-medium transition-colors"
               style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
             >
               <Download size={13} />
-              Download CSV
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => setDigestOpen(true)}
+              className="flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_2px_10px_rgba(30,111,224,.35)] transition-transform hover:-translate-y-[1px]"
+              style={{ background: "var(--am)" }}
+            >
+              <Send size={13} />
+              Forward locked creators
             </button>
           </div>
         </div>
 
-        <h1
-          className="mb-5 text-[28px] font-semibold"
-          style={{ fontFamily: "Fraunces, serif", color: "var(--ink)", letterSpacing: "-0.01em" }}
-        >
-          {campaign.name}
-        </h1>
-
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <SlabCard
-            label="Client"
-            editable
-            value={campaign.brandClient}
-            onChange={(v) => updateMetaField("brandClient", v)}
-            placeholder={campaign.client || "\u2014"}
-          />
-
-          <SlabCard
-            label={"Budget (\u20b9)"}
-            editable
-            type="number"
-            value={campaign.brandBudget}
-            onChange={(v) => updateMetaField("brandBudget", v)}
-            placeholder="0"
-          />
-
-          <SlabCard
-            label="Timeline"
-            editable
-            type="date"
-            value={campaign.brandTimelineEnd}
-            onChange={(v) => updateMetaField("brandTimelineEnd", v)}
-          />
-
-          <SlabCard label="Links Posted">
-            {linksPosted}/{linksExpected}
+          <SlabCard label="Client" editable value={campaign.brandClient} onChange={(v) => updateMetaField("brandClient", v)} placeholder={campaign.client || "\u2014"} />
+          <SlabCard label={"Budget (\u20b9)"} editable type="number" value={campaign.brandBudget} onChange={(v) => updateMetaField("brandBudget", v)} placeholder="0" />
+          <SlabCard label="Timeline" editable type="date" value={campaign.brandTimelineEnd} onChange={(v) => updateMetaField("brandTimelineEnd", v)} />
+          <SlabCard label="Links Posted">{linksPosted}/{linksExpected}</SlabCard>
+          <SlabCard label="Locked Profiles">
+            <span style={{ color: LOCK_COLOR }}>{lockedRows.length}</span>
           </SlabCard>
-
-          <SlabCard label="Locked Profiles">{lockedProfilesCount}</SlabCard>
-
-          <SlabCard
-            label="Point Of Contact(POC)"
-            editable
-            value={campaign.brandPoc}
-            onChange={(v) => updateMetaField("brandPoc", v)}
-            placeholder={campaign.poc || "\u2014"}
-          />
+          <SlabCard label="Point of Contact (POC)" editable value={campaign.brandPoc} onChange={(v) => updateMetaField("brandPoc", v)} placeholder={campaign.poc || "\u2014"} />
         </div>
 
-        <div className="overflow-auto rounded-[13px] border" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
-          <table className="w-full border-collapse text-sm" style={{ minWidth: 1180 }}>
+        <div className="overflow-auto rounded-[14px] border shadow-[0_1px_3px_rgba(16,36,62,.06)]" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
+          <table className="w-full border-collapse text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
-                {[
-                  "Creator", "Followers", "Proposal Cost", "Counter Cost", "Final Cost",
-                  "Remarks", "Locked Status", "Execution Stage", "Live Video Link", "Viewership",
-                ].map((h) => (
+                {["Creator", "Followers", "Proposal Cost", "Counter Cost", "Final Cost", "Remarks", "Locked Status", "Execution Stage", "Live Video Link"].map((h) => (
                   <th
                     key={h}
-                    className="whitespace-nowrap border-b px-4 py-3 text-left text-[11px] uppercase tracking-[.06em]"
+                    className="whitespace-nowrap border-b px-4 py-3 text-left text-[10.5px] font-semibold uppercase tracking-[.07em]"
                     style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--bg)" }}
                   >
                     {h}
@@ -523,30 +478,40 @@ function BrandDashboardView({ campaignId }) {
             <tbody>
               {rows.map((row) => {
                 const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
+                const rowStyle = row.brandLocked
+                  ? { background: LOCK_WASH, boxShadow: `inset 4px 0 0 ${LOCK_COLOR}` }
+                  : {};
 
                 return (
-                  <tr key={row.creatorId}>
+                  <tr key={row.creatorId} style={rowStyle}>
                     <td className="whitespace-nowrap border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      {row.profileLink && toHref(row.profileLink) ? (
-                        <a
-                          href={toHref(row.profileLink)}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="View profile"
-                          className="underline decoration-1 underline-offset-2"
-                          style={{ color: "var(--am)" }}
-                        >
-                          {row.name}
-                        </a>
-                      ) : (
-                        <span style={{ color: "var(--ink)" }}>{row.name}</span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {row.isNew && (
+                          <span
+                            className="flex-shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[.04em] text-white"
+                            style={{ background: "var(--am)" }}
+                          >
+                            New
+                          </span>
+                        )}
+                        {row.profileLink && toHref(row.profileLink) ? (
+                          <a
+                            href={toHref(row.profileLink)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="View profile"
+                            className="underline decoration-1 underline-offset-2"
+                            style={{ color: "var(--am)" }}
+                          >
+                            {row.name}
+                          </a>
+                        ) : (
+                          <span style={{ color: "var(--ink)" }}>{row.name}</span>
+                        )}
+                      </div>
                     </td>
 
-                    <td
-                      className="border-b px-4 py-3"
-                      style={{ borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
-                    >
+                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fmt(row.followers)}
                     </td>
 
@@ -598,46 +563,19 @@ function BrandDashboardView({ campaignId }) {
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <div className="flex flex-col gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
-                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors"
-                          style={
-                            row.brandLocked
-                              ? { borderColor: "#2BAE66", color: "#2BAE66", background: "rgba(43,174,102,.08)" }
-                              : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
-                          }
-                        >
-                          {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
-                          {row.brandLocked ? "Locked" : "Unlocked"}
-                        </button>
-
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            title="Email the brand: locked creator + final cost"
-                            onClick={() =>
-                              sendLockConfirmationEmail({
-                                campaignName: campaign.name,
-                                creatorName: row.name,
-                                finalCost: row.brandFinalCost,
-                              })
-                            }
-                            className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[6px] border transition-colors"
-                            style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
-                          >
-                            <Mail size={11} />
-                          </button>
-
-                          <ApprovalScreenshotUpload
-                            campaignId={campaign.id}
-                            creatorId={row.creatorId}
-                            screenshotUrl={row.brandApprovalScreenshotUrl}
-                            onChange={(url) => updateLinkField(row.creatorId, "brandApprovalScreenshotUrl", url)}
-                          />
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateLinkField(row.creatorId, "brandLocked", !row.brandLocked)}
+                        className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                        style={
+                          row.brandLocked
+                            ? { borderColor: LOCK_COLOR, color: "#FFFFFF", background: LOCK_COLOR }
+                            : { borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }
+                        }
+                      >
+                        {row.brandLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                        {row.brandLocked ? "Locked" : "Unlocked"}
+                      </button>
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
@@ -649,38 +587,19 @@ function BrandDashboardView({ campaignId }) {
                           {row.executionStage}
                         </span>
                         {row.liveDate && (
-                          <span className="text-[10.5px]" style={{ color: "var(--ink3)" }}>
-                            {fmtDate(row.liveDate)}
-                          </span>
+                          <span className="text-[10.5px]" style={{ color: "var(--ink3)" }}>{fmtDate(row.liveDate)}</span>
                         )}
                       </div>
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       {row.liveLink && toHref(row.liveLink) ? (
-                        <a
-                          href={toHref(row.liveLink)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline decoration-1 underline-offset-2"
-                          style={{ color: "var(--am)" }}
-                        >
+                        <a href={toHref(row.liveLink)} target="_blank" rel="noreferrer" className="underline decoration-1 underline-offset-2" style={{ color: "var(--am)" }}>
                           View
                         </a>
                       ) : (
                         <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>
                       )}
-                    </td>
-
-                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <input
-                        type="text"
-                        value={row.brandViewership ?? ""}
-                        onChange={(e) => updateLinkField(row.creatorId, "brandViewership", e.target.value)}
-                        placeholder="0"
-                        className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
-                        style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                      />
                     </td>
                   </tr>
                 );

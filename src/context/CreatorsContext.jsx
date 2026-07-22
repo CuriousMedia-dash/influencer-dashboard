@@ -3,7 +3,6 @@ import { CreatorsContext } from "./creatorsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
 import { syncFromSheetUrl } from "../utils/sheetSync";
-import { syncFromExcelFileUrl } from "../utils/excelSync";
 import { dedupeKey } from "../utils/csvImport";
 
 // Local cache of the creators list, so a reload shows the last-known data
@@ -245,11 +244,10 @@ export function CreatorsProvider({ children }) {
   // Also updates the shared master-sheet setting (admin-only, enforced by
   // RLS — a non-admin's write here is silently rejected by the database).
   const syncNow = useCallback(
-    async (rawUrl, { mirror = false, type = "google_sheet" } = {}) => {
+    async (rawUrl, { mirror = false } = {}) => {
       setSyncStatus("syncing");
       try {
-        const syncFn = type === "excel" ? syncFromExcelFileUrl : syncFromSheetUrl;
-        const { merged, added, updated, removed, rowErrors } = await syncFn(
+        const { merged, added, updated, removed, rowErrors } = await syncFromSheetUrl(
           rawUrl,
           creatorsRef.current,
           { mirror }
@@ -260,7 +258,7 @@ export function CreatorsProvider({ children }) {
         // instead of trusting the local merge's temporary ids.
         await loadFromSupabase();
 
-        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror, type };
+        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
         const { error: settingsError } = await supabase.from("app_settings").upsert(
           { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
           { onConflict: "key" }
@@ -288,12 +286,11 @@ export function CreatorsProvider({ children }) {
   // master sheet setting above. Doesn't affect what the background sync
   // keeps pulling from.
   const importFromSheet = useCallback(
-    async (rawUrl, { type = "google_sheet" } = {}) => {
+    async (rawUrl) => {
       setImportStatus("importing");
       setImportError("");
       try {
-        const syncFn = type === "excel" ? syncFromExcelFileUrl : syncFromSheetUrl;
-        const { merged, added, updated, rowErrors } = await syncFn(
+        const { merged, added, updated, rowErrors } = await syncFromSheetUrl(
           rawUrl,
           creatorsRef.current,
           { mirror: false }
@@ -371,7 +368,7 @@ export function CreatorsProvider({ children }) {
       if (syncingRef.current) return;
       syncingRef.current = true;
       try {
-        await syncNow(sheetLink.url, { mirror: Boolean(sheetLink.mirror), type: sheetLink.type || "google_sheet" });
+        await syncNow(sheetLink.url, { mirror: Boolean(sheetLink.mirror) });
       } catch {
         // Swallowed on purpose — a brief network hiccup shouldn't
         // interrupt the user. The status pill already reflects the error.
