@@ -106,6 +106,38 @@ export function normalisePhone(raw) {
   return String(raw ?? "").replace(/\D/g, "");
 }
 
+// Normalise a profile link for matching — strips protocol, "www.", and
+// a trailing slash, so "https://instagram.com/foo/" and
+// "http://www.instagram.com/foo" are recognised as the same link.
+export function normaliseLink(raw) {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/\/+$/, "");
+}
+
+// A creator is matched by name + phone + platform, OR by link + platform
+// — either is enough on its own. This matters because real-world sheets
+// often have messy phone data (two numbers in one cell, a name typed
+// alongside the number, etc.), so relying on phone alone would keep
+// creating duplicate entries for the same person every time their phone
+// field looked slightly different. The link is usually the more stable
+// identifier when that happens.
+export function phoneMatchKey(row) {
+  const phone = normalisePhone(row.phone);
+  if (!phone) return null;
+  const platform = (row.platform || "").trim().toLowerCase();
+  return `phone|${normaliseName(row.name)}|${phone}|${platform}`;
+}
+
+export function linkMatchKey(row) {
+  const link = normaliseLink(row.profileLink);
+  if (!link) return null;
+  const platform = (row.platform || "").trim().toLowerCase();
+  return `link|${link}|${platform}`;
+}
+
 /**
  * Parse a raw CSV string into structured creator rows.
  *
@@ -331,10 +363,18 @@ export function mergeCreators(existing, incoming) {
  * Returns: { merged: [...creators], added: number, updated: number, removed: number }
  */
 export function syncCreators(existing, incoming, { mirror = false } = {}) {
-  // Map dedupe key -> index in existing array, for fast lookup.
-  const keyIndex = new Map();
+  // Two separate lookup indexes — a match on EITHER is enough to treat a
+  // row as the same creator, not just phone alone. This matters because
+  // real-world phone data is often messy (two numbers in one cell, a
+  // name typed next to the number, etc.) — the link is usually the more
+  // reliable identifier when that happens.
+  const phoneIndex = new Map();
+  const linkIndex = new Map();
   existing.forEach((c, i) => {
-    keyIndex.set(dedupeKey(c), i);
+    const pk = phoneMatchKey(c);
+    if (pk && !phoneIndex.has(pk)) phoneIndex.set(pk, i);
+    const lk = linkMatchKey(c);
+    if (lk && !linkIndex.has(lk)) linkIndex.set(lk, i);
   });
 
   const result = [...existing];
@@ -345,8 +385,12 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
   let nextId = Date.now();
 
   for (const row of incoming) {
-    const key = dedupeKey(row);
-    const matchIdx = keyIndex.get(key);
+    const pk = phoneMatchKey(row);
+    const lk = linkMatchKey(row);
+    let matchIdx = lk !== null ? linkIndex.get(lk) : undefined;
+    if (matchIdx === undefined && pk !== null) {
+      matchIdx = phoneIndex.get(pk);
+    }
 
     if (matchIdx !== undefined) {
       // Update existing creator in place, keeping its id.
@@ -356,13 +400,22 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
       };
       matchedIdx.add(matchIdx);
       updated++;
+
+      // Re-index under the (possibly changed) phone/link, so a later row
+      // in this same batch can still find this creator correctly too.
+      const newPk = phoneMatchKey(result[matchIdx]);
+      if (newPk) phoneIndex.set(newPk, matchIdx);
+      const newLk = linkMatchKey(result[matchIdx]);
+      if (newLk) linkIndex.set(newLk, matchIdx);
     } else {
       const newCreator = { id: "sync_" + nextId++, ...row };
       result.push(newCreator);
-      matchedIdx.add(result.length - 1);
-      keyIndex.set(key, result.length - 1);
+      const newIdx = result.length - 1;
+      matchedIdx.add(newIdx);
+      if (pk) phoneIndex.set(pk, newIdx);
+      if (lk) linkIndex.set(lk, newIdx);
       added++;
-      addedKeys.push(key);
+      addedKeys.push(dedupeKey(row));
     }
   }
 

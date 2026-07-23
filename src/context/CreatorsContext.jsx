@@ -68,7 +68,12 @@ function toCreatorColumns(fields) {
   const out = {};
   Object.entries(fields).forEach(([k, v]) => {
     const col = CREATOR_FIELD_MAP[k];
-    if (col) out[col] = v;
+    if (!col) return;
+    // A blank cell in the sheet comes through as "" — fine for text
+    // columns, but Postgres numeric columns (like commercial) reject an
+    // empty string outright. Converting to null here means "no value",
+    // which every column type accepts.
+    out[col] = v === "" ? null : v;
   });
   return out;
 }
@@ -238,7 +243,7 @@ export function CreatorsProvider({ children }) {
   const SAVE_CHUNK_SIZE = 40;
 
   const pushBaseFieldsToSupabase = useCallback(async (rows, source, commercialForKeys) => {
-    const payload = rows.map((r) => {
+    const buildRow = (r) => {
       const key = dedupeKey(r);
       const fields = commercialForKeys?.has(key)
         ? [...SHEET_SYNCED_FIELDS, "commercial"]
@@ -249,23 +254,41 @@ export function CreatorsProvider({ children }) {
       const row = { ...cols, dedupe_key: key };
       if (source) row.source = source;
       return row;
-    });
-    if (payload.length === 0) return;
+    };
 
-    for (let i = 0; i < payload.length; i += SAVE_CHUNK_SIZE) {
-      const chunk = payload.slice(i, i + SAVE_CHUNK_SIZE);
-      const { error } = await supabase
-        .from("creators")
-        .upsert(chunk, { onConflict: "dedupe_key" });
-      if (error) {
-        const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
-        const totalBatches = Math.ceil(payload.length / SAVE_CHUNK_SIZE);
-        console.error(`Failed to save creators (batch ${batchNum}/${totalBatches}):`, error.message);
-        throw new Error(
-          `Couldn't save to the database (stopped partway through, on batch ${batchNum} of ${totalBatches} — earlier batches saved successfully): ${error.message}`
-        );
+    // Rows still carrying a temporary in-memory id ("sync_..."/"imp_...")
+    // are genuinely new — safe to upsert by dedupe_key. Rows with a real
+    // database id already exist — those get upserted by that real id
+    // instead. This split matters now that a creator can be matched by
+    // link even when their phone number changed (messy sheet data) — the
+    // dedupe_key string itself would differ from what's stored in that
+    // case, which would otherwise make the database think it's a new row
+    // instead of updating the existing one.
+    const isTempId = (id) => typeof id === "string" && /^(sync|imp)_/.test(id);
+    const newRows = rows.filter((r) => isTempId(r.id)).map(buildRow);
+    const existingRows = rows
+      .filter((r) => !isTempId(r.id))
+      .map((r) => ({ id: r.id, ...buildRow(r) }));
+
+    async function upsertInChunks(payload, conflictTarget) {
+      for (let i = 0; i < payload.length; i += SAVE_CHUNK_SIZE) {
+        const chunk = payload.slice(i, i + SAVE_CHUNK_SIZE);
+        const { error } = await supabase
+          .from("creators")
+          .upsert(chunk, { onConflict: conflictTarget });
+        if (error) {
+          const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
+          const totalBatches = Math.ceil(payload.length / SAVE_CHUNK_SIZE);
+          console.error(`Failed to save creators (batch ${batchNum}/${totalBatches}):`, error.message);
+          throw new Error(
+            `Couldn't save to the database (stopped partway through, on batch ${batchNum} of ${totalBatches} — earlier batches saved successfully): ${error.message}`
+          );
+        }
       }
     }
+
+    await upsertInChunks(newRows, "dedupe_key");
+    await upsertInChunks(existingRows, "id");
   }, []);
 
   // Single entry point for pulling from the MASTER sheet — used for the
