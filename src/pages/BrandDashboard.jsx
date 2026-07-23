@@ -519,15 +519,17 @@ function BrandDashboardView({ campaignId }) {
             >
               {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
             </button>
-            <button
-              type="button"
-              onClick={() => setDigestOpen(true)}
-              className="flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_2px_10px_rgba(30,111,224,.35)] transition-transform hover:-translate-y-[1px]"
-              style={{ background: "var(--am)" }}
-            >
-              <Send size={13} />
-              Forward locked creators
-            </button>
+            {!campaign.isBrandViewer && (
+              <button
+                type="button"
+                onClick={() => setDigestOpen(true)}
+                className="flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[12px] font-semibold text-white shadow-[0_2px_10px_rgba(30,111,224,.35)] transition-transform hover:-translate-y-[1px]"
+                style={{ background: "var(--am)" }}
+              >
+                <Send size={13} />
+                Forward locked creators
+              </button>
+            )}
             <button
               type="button"
               onClick={signOut}

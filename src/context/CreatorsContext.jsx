@@ -221,13 +221,18 @@ export function CreatorsProvider({ children }) {
   // Pushes the sheet-owned fields for every creator in `rows` into
   // Supabase, matched by the same name+phone+platform key the sheet sync
   // already uses internally. Never touches remark/quit/commercial, so an
-  // in-app edit always survives the next sync.
-  const pushBaseFieldsToSupabase = useCallback(async (rows) => {
+  // in-app edit always survives the next sync. `source`, when given, is
+  // stamped onto every row in this call — used to tell "came from the
+  // Google Sheet" apart from "added via CSV upload", so a sheet mirror
+  // sync can never delete something a CSV upload added.
+  const pushBaseFieldsToSupabase = useCallback(async (rows, source) => {
     const payload = rows.map((r) => {
       const cols = toCreatorColumns(
         Object.fromEntries(SHEET_SYNCED_FIELDS.map((k) => [k, r[k]]))
       );
-      return { ...cols, dedupe_key: dedupeKey(r) };
+      const row = { ...cols, dedupe_key: dedupeKey(r) };
+      if (source) row.source = source;
+      return row;
     });
     if (payload.length === 0) return;
     const { error } = await supabase
@@ -247,12 +252,36 @@ export function CreatorsProvider({ children }) {
     async (rawUrl, { mirror = false } = {}) => {
       setSyncStatus("syncing");
       try {
+        const beforeSync = creatorsRef.current;
         const { merged, added, updated, removed, rowErrors } = await syncFromSheetUrl(
           rawUrl,
-          creatorsRef.current,
+          beforeSync,
           { mirror }
         );
-        await pushBaseFieldsToSupabase(merged);
+        // Every row here is sheet-sourced, whether brand new or an
+        // update to something that already existed.
+        await pushBaseFieldsToSupabase(merged, "sheet");
+
+        // Mirror mode's actual deletion happens here — and only for
+        // creators whose source is genuinely "sheet". A creator added
+        // through CSV upload can never be removed by this, even if it's
+        // not present in the sheet, because it was never sheet-sourced
+        // to begin with.
+        if (mirror) {
+          const mergedIds = new Set(merged.map((c) => c.id));
+          const removedIds = beforeSync.filter((c) => !mergedIds.has(c.id)).map((c) => c.id);
+          if (removedIds.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("creators")
+              .delete()
+              .in("id", removedIds)
+              .eq("source", "sheet");
+            if (deleteError) {
+              console.error("Failed to remove creators no longer in the sheet:", deleteError.message);
+            }
+          }
+        }
+
         // Re-load from Supabase so every row carries its real database id
         // and whatever remark/quit/commercial already existed for it,
         // instead of trusting the local merge's temporary ids.
@@ -284,7 +313,8 @@ export function CreatorsProvider({ children }) {
   // One-time "add creators from another sheet" — merges whatever's in the
   // given sheet into the same shared creators list, but never touches the
   // master sheet setting above. Doesn't affect what the background sync
-  // keeps pulling from.
+  // keeps pulling from. Never removes anything (mirror is always off
+  // here), so there's no deletion step needed.
   const importFromSheet = useCallback(
     async (rawUrl) => {
       setImportStatus("importing");
@@ -295,7 +325,7 @@ export function CreatorsProvider({ children }) {
           creatorsRef.current,
           { mirror: false }
         );
-        await pushBaseFieldsToSupabase(merged);
+        await pushBaseFieldsToSupabase(merged, "sheet");
         await loadFromSupabase();
         setImportStatus("done");
         return { added, updated, rowErrors };
@@ -311,19 +341,21 @@ export function CreatorsProvider({ children }) {
   // Confirms a local file upload (CSV or Excel) by actually saving it to
   // Supabase — the base fields only, same as a sheet sync would, so any
   // in-app edits (remark/quit/commercial) on existing creators are left
-  // alone. Previously this only updated local React state, which looked
-  // like it worked but never actually reached the shared database.
-  // `removedIds`, if provided (admin-only "mirror this file" uploads),
-  // deletes creators no longer present in the uploaded file.
+  // alone. `addedKeys` (the dedupe keys of rows that are genuinely new,
+  // from syncCreators) get tagged source: "upload" — existing creators
+  // being updated keep whatever source they already had, so re-uploading
+  // a CSV that happens to include sheet-sourced creators can never
+  // reclassify them as upload-only and put them at risk of nothing (they
+  // were never at risk from CSV anyway — uploads never delete).
   const confirmLocalImport = useCallback(
-    async (mergedRows, { removedIds = [] } = {}) => {
-      await pushBaseFieldsToSupabase(mergedRows);
-      if (removedIds.length > 0) {
-        const { error } = await supabase.from("creators").delete().in("id", removedIds);
-        if (error) {
-          console.error("Failed to remove creators no longer in the uploaded file:", error.message);
-        }
-      }
+    async (mergedRows, { addedKeys = [] } = {}) => {
+      const addedKeySet = new Set(addedKeys);
+      const newRows = mergedRows.filter((r) => addedKeySet.has(dedupeKey(r)));
+      const existingRows = mergedRows.filter((r) => !addedKeySet.has(dedupeKey(r)));
+
+      if (newRows.length > 0) await pushBaseFieldsToSupabase(newRows, "upload");
+      if (existingRows.length > 0) await pushBaseFieldsToSupabase(existingRows);
+
       await loadFromSupabase();
     },
     [pushBaseFieldsToSupabase, loadFromSupabase]

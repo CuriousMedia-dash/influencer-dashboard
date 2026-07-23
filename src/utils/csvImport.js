@@ -301,6 +301,7 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
 
   const result = [...existing];
   const matchedIdx = new Set();
+  const addedKeys = [];
   let added = 0;
   let updated = 0;
   let nextId = Date.now();
@@ -323,6 +324,7 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
       matchedIdx.add(result.length - 1);
       keyIndex.set(key, result.length - 1);
       added++;
+      addedKeys.push(key);
     }
   }
 
@@ -337,7 +339,7 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
     a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
   );
 
-  return { merged, added, updated, removed };
+  return { merged, added, updated, removed, addedKeys };
 }
 
 // ---------------------------------------------------------------------------

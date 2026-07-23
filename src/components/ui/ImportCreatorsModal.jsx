@@ -62,7 +62,6 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setFileName("");
     setErrors([]);
     setPreview(null);
-    setMirror(false);
     if (fileRef.current) fileRef.current.value = "";
     setLinkError("");
     setSyncSummary(null);
@@ -75,8 +74,8 @@ export default function ImportCreatorsModal({ open, onClose }) {
   // (the ability to remove creators) is a Master Sheet-only concept now,
   // so ad-hoc CSV additions can never accidentally wipe anyone out.
   function buildPreview(rows) {
-    const { merged, added, updated } = syncCreators(creators, rows, { mirror: false });
-    setPreview({ merged, added, updated });
+    const { merged, added, updated, addedKeys } = syncCreators(creators, rows, { mirror: false });
+    setPreview({ merged, added, updated, addedKeys });
   }
 
   async function handleFileChange(e) {
@@ -112,7 +111,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
     if (!preview) return;
     setConfirming(true);
     try {
-      await confirmLocalImport(preview.merged);
+      await confirmLocalImport(preview.merged, { addedKeys: preview.addedKeys });
       const errorNote = errors.length > 0 ? `, ${errors.length} row${errors.length === 1 ? "" : "s"} skipped` : "";
       showToast(`${preview.added} added, ${preview.updated} updated${errorNote}`, true);
       handleClose();
