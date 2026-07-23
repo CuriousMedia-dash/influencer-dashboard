@@ -2,6 +2,7 @@ import { useState } from "react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { getFunctionErrorMessage } from "../../utils/functionError";
 
 /**
  * Creates a team member's account directly — admin picks both the email
@@ -43,8 +44,9 @@ export default function CreateUserModal({ open, onClose }) {
       const { data, error: fnError } = await supabase.functions.invoke("create-team-user", {
         body: { email: email.trim(), password },
       });
-      if (fnError) throw new Error(fnError.message || "Something went wrong.");
-      if (data?.error) throw new Error(data.error);
+      if (fnError || data?.error) {
+        throw new Error(await getFunctionErrorMessage(fnError, data));
+      }
 
       setSuccess(true);
       showToast(`Account created for ${email.trim()} — they can sign in right away`, true);

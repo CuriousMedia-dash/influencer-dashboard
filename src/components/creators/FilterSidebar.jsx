@@ -2,8 +2,6 @@ import { Search } from "lucide-react";
 import RangeSlider from "./RangeSlider";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import {
-  PLATFORMS,
-  GENDERS,
   TIERS,
   TIER_LABELS,
   TIER_RANGE_LABELS,
@@ -50,8 +48,10 @@ export default function FilterSidebar({
   setSearch,
   activePlatforms,
   togglePlatform,
+  platforms,
   activeGenders,
   toggleGender,
+  genders,
   activeTiers,
   toggleTier,
   activeNiches,
@@ -104,7 +104,7 @@ export default function FilterSidebar({
           Platform
         </div>
         <div className="flex flex-col gap-1.5">
-          {PLATFORMS.map((plat) => {
+          {platforms.map((plat) => {
             const on = activePlatforms.has(plat);
             return (
               <button
@@ -135,7 +135,7 @@ export default function FilterSidebar({
           Gender
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {GENDERS.map((g) => {
+          {genders.map((g) => {
             const on = activeGenders.has(g);
             return (
               <button

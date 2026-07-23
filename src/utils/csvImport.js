@@ -47,6 +47,7 @@ const HEADER_MAP = {
   url: "profileLink",
 
   commercial: "commercial",
+  commerical: "commercial",
   rate: "commercial",
   "commercial rate": "commercial",
   "commercials": "commercial",

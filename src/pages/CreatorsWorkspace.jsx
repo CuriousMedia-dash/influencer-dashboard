@@ -59,6 +59,8 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
 
   const niches = useMemo(() => uniqValues(creators, "category"), [creators]);
   const languages = useMemo(() => uniqValues(creators, "language"), [creators]);
+  const platformOptions = useMemo(() => uniqValues(creators, "platform"), [creators]);
+  const genderOptions = useMemo(() => uniqValues(creators, "gender"), [creators]);
 
   const totalSelected = selectedIds.size;
 
@@ -119,8 +121,10 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
               setSearch={setSearch}
               activePlatforms={activePlatforms}
               togglePlatform={togglePlatform}
+              platforms={platformOptions}
               activeGenders={activeGenders}
               toggleGender={toggleGender}
+              genders={genderOptions}
               activeTiers={activeTiers}
               toggleTier={toggleTier}
               activeNiches={activeNiches}

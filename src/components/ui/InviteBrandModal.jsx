@@ -2,6 +2,7 @@ import { useState } from "react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { getFunctionErrorMessage } from "../../utils/functionError";
 
 /**
  * One-click brand invite: sends the login email AND adds them to the
@@ -36,8 +37,9 @@ export default function InviteBrandModal({ open, onClose }) {
       const { data, error: fnError } = await supabase.functions.invoke("hyper-action", {
         body: { email: email.trim() },
       });
-      if (fnError) throw new Error(fnError.message || "Something went wrong.");
-      if (data?.error) throw new Error(data.error);
+      if (fnError || data?.error) {
+        throw new Error(await getFunctionErrorMessage(fnError, data));
+      }
 
       setSuccess(data?.alreadyExisted ? "already" : "sent");
       showToast(
