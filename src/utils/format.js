@@ -199,7 +199,17 @@ export function groupByPlatform(items, getCreator) {
 
   items.forEach((item) => {
     const creator = getCreator(item);
-    if (!creator) return;
+    if (!creator) {
+      // A link exists but the creator it points to isn't in the locally
+      // loaded list — usually a stale cache after a big data change,
+      // rather than the creator genuinely being gone. Showing it under
+      // "No platform" with a placeholder name means it's visible and
+      // obviously wrong, instead of silently vanishing from the table
+      // with no indication anything's missing.
+      const placeholder = { id: item.creatorId, name: "(creator not found \u2014 try refreshing)", platform: "" };
+      groups.get("No platform").push({ item, creator: placeholder, platform: null });
+      return;
+    }
     const platforms = creatorPlatforms(creator);
     if (platforms.length === 0) {
       groups.get("No platform").push({ item, creator, platform: null });
