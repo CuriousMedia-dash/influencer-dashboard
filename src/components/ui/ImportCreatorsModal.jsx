@@ -357,7 +357,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
           )}
 
           {linkError && (
-            <div className="mb-4 flex items-start gap-2 rounded-[10px] border p-3 text-xs" style={{ borderColor: "rgba(224,82,75,.3)", background: "rgba(224,82,75,.06)", color: "#E0524B" }}>
+            <div className="mb-4 flex items-start gap-2 whitespace-pre-line rounded-[10px] border p-3 text-xs" style={{ borderColor: "rgba(224,82,75,.3)", background: "rgba(224,82,75,.06)", color: "#E0524B" }}>
               <AlertCircle size={14} className="mt-[1px] flex-shrink-0" />
               {linkError}
             </div>

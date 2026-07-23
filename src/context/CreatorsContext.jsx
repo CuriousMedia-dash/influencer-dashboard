@@ -283,30 +283,60 @@ export function CreatorsProvider({ children }) {
     // case, which would otherwise make the database think it's a new row
     // instead of updating the existing one.
     const isTempId = (id) => typeof id === "string" && /^(sync|imp)_/.test(id);
-    const newRows = rows.filter((r) => isTempId(r.id)).map(buildRow);
-    const existingRows = rows
-      .filter((r) => !isTempId(r.id))
-      .map((r) => ({ id: r.id, ...buildRow(r) }));
 
-    async function upsertInChunks(payload, conflictTarget) {
+    // Postgres refuses an entire upsert batch if the same conflict
+    // target (id, or dedupe_key) appears more than once in it — this can
+    // happen if the same creator shows up more than once across a
+    // sheet's tabs, or if duplicate entries already exist in the
+    // database from before link-based matching existed. Rather than
+    // chase every possible upstream cause, de-duplicating right here
+    // guarantees it can never reach the database that way — keeping
+    // whichever occurrence came last (most recently processed).
+    function dedupeBy(rowsToDedupe, keyFn) {
+      const map = new Map();
+      rowsToDedupe.forEach((r) => map.set(keyFn(r), r));
+      return Array.from(map.values());
+    }
+
+    const newRows = dedupeBy(
+      rows.filter((r) => isTempId(r.id)).map(buildRow),
+      (r) => r.dedupe_key
+    );
+    const existingRows = dedupeBy(
+      rows.filter((r) => !isTempId(r.id)).map((r) => ({ id: r.id, ...buildRow(r) })),
+      (r) => r.id
+    );
+
+    async function upsertInChunks(payload, conflictTarget, label) {
+      const totalBatches = Math.ceil(payload.length / SAVE_CHUNK_SIZE);
+      const failures = [];
       for (let i = 0; i < payload.length; i += SAVE_CHUNK_SIZE) {
         const chunk = payload.slice(i, i + SAVE_CHUNK_SIZE);
+        const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
         const { error } = await supabase
           .from("creators")
           .upsert(chunk, { onConflict: conflictTarget });
         if (error) {
-          const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
-          const totalBatches = Math.ceil(payload.length / SAVE_CHUNK_SIZE);
-          console.error(`Failed to save creators (batch ${batchNum}/${totalBatches}):`, error.message);
-          throw new Error(
-            `Couldn't save to the database (stopped partway through, on batch ${batchNum} of ${totalBatches} — earlier batches saved successfully): ${error.message}`
-          );
+          console.error(`Failed to save creators (${label}, batch ${batchNum}/${totalBatches}):`, error.message);
+          // Collected, not thrown immediately — every remaining batch
+          // still gets attempted, so one sync attempt surfaces every
+          // real problem at once instead of just the first one hit.
+          failures.push(`${label} batch ${batchNum}/${totalBatches}: ${error.message}`);
         }
       }
+      return failures;
     }
 
-    await upsertInChunks(newRows, "dedupe_key");
-    await upsertInChunks(existingRows, "id");
+    const newFailures = await upsertInChunks(newRows, "dedupe_key", "new creators");
+    const existingFailures = await upsertInChunks(existingRows, "id", "existing creators");
+    const allFailures = [...newFailures, ...existingFailures];
+
+    if (allFailures.length > 0) {
+      throw new Error(
+        `Couldn't save everything (${allFailures.length} batch${allFailures.length === 1 ? "" : "es"} failed — ` +
+          `everything else saved successfully):\n${allFailures.join("\n")}`
+      );
+    }
   }, []);
 
   // Single entry point for pulling from the MASTER sheet — used for the
