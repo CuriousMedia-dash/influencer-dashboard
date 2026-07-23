@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
@@ -382,12 +382,10 @@ function BrandDashboardView({ campaignId }) {
       .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
 
-  async function handleDigestSent() {
+  function handleDigestSent() {
     setDigestOpen(false);
     setJustSent(true);
     setTimeout(() => setJustSent(false), 3000);
-    await supabase.rpc("mark_brand_digest_sent", { p_campaign_id: campaignId });
-    setData((prev) => ({ ...prev, campaign: { ...prev.campaign, brandDigestSentAt: new Date().toISOString() } }));
   }
 
   function handleConfirmLock() {
@@ -396,24 +394,39 @@ function BrandDashboardView({ campaignId }) {
     setConfirmLockRow(null);
   }
 
-  // New = added after the last digest was sent. Sorted to the top so
-  // returning brand viewers immediately see what's changed, without
-  // needing to hunt through creators they've already considered.
-  // This must run on every render (React's Rules of Hooks), so the
-  // "no data yet" case is handled inside the memo, not by skipping it
-  // with an early return above it.
-  const rows = useMemo(() => {
-    if (!data || !data.rows) return [];
-    const digestSentAt = data.campaign?.brandDigestSentAt ? new Date(data.campaign.brandDigestSentAt) : null;
-    const withFlags = data.rows.map((r) => ({
-      ...r,
-      isNew: digestSentAt ? new Date(r.createdAt) > digestSentAt : false,
-    }));
-    return [...withFlags].sort((a, b) => {
-      if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-      return 0;
+  // Flat list of every row, always safe to compute (no early return above
+  // this, per React's Rules of Hooks).
+  const rows = useMemo(() => (data && data.rows) || [], [data]);
+
+  // Grouped into real date sections — newest first — instead of a
+  // binary "new" flag that only meant anything relative to whenever
+  // someone happened to click Forward. This is clearer: every creator
+  // sits under the actual day (and shows the actual time) they were
+  // added, permanently, not relative to an arbitrary click.
+  const groupedRows = useMemo(() => {
+    const groups = new Map();
+    rows.forEach((r) => {
+      const d = r.createdAt ? new Date(r.createdAt) : null;
+      const dateKey = d ? d.toISOString().slice(0, 10) : "unknown";
+      if (!groups.has(dateKey)) groups.set(dateKey, []);
+      groups.get(dateKey).push(r);
     });
-  }, [data]);
+    return Array.from(groups.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([dateKey, groupRows]) => ({
+        dateKey,
+        label:
+          dateKey === "unknown"
+            ? "Date unknown"
+            : new Date(dateKey).toLocaleDateString("en-IN", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              }),
+        rows: groupRows,
+      }));
+  }, [rows]);
 
   if (data === undefined) {
     return (
@@ -569,38 +582,46 @@ function BrandDashboardView({ campaignId }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
-                const rowStyle = {};
-
-                return (
-                  <tr key={row.creatorId} style={rowStyle}>
-                    <td className="whitespace-nowrap border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <div className="flex items-center gap-1.5">
-                        {row.isNew && (
-                          <span
-                            className="flex-shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[.04em] text-white"
-                            style={{ background: "var(--am)" }}
-                          >
-                            New
-                          </span>
-                        )}
-                        {row.profileLink && toHref(row.profileLink) ? (
-                          <a
-                            href={toHref(row.profileLink)}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="View profile"
-                            className="underline decoration-1 underline-offset-2"
-                            style={{ color: "var(--am)" }}
-                          >
-                            {row.name}
-                          </a>
-                        ) : (
-                          <span style={{ color: "var(--ink)" }}>{row.name}</span>
-                        )}
-                      </div>
+              {groupedRows.map((group) => (
+                <Fragment key={group.dateKey}>
+                  <tr>
+                    <td
+                      colSpan={9}
+                      className="border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[.06em]"
+                      style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
+                    >
+                      Added {group.label}
                     </td>
+                  </tr>
+                  {group.rows.map((row) => {
+                    const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
+                    const addedTime = row.createdAt
+                      ? new Date(row.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
+                      : null;
+
+                    return (
+                      <tr key={row.creatorId}>
+                        <td className="whitespace-nowrap border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <div className="flex flex-col gap-0.5">
+                            {row.profileLink && toHref(row.profileLink) ? (
+                              <a
+                                href={toHref(row.profileLink)}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="View profile"
+                                className="underline decoration-1 underline-offset-2"
+                                style={{ color: "var(--am)" }}
+                              >
+                                {row.name}
+                              </a>
+                            ) : (
+                              <span style={{ color: "var(--ink)" }}>{row.name}</span>
+                            )}
+                            {addedTime && (
+                              <span className="text-[10px]" style={{ color: "var(--ink3)" }}>{addedTime}</span>
+                            )}
+                          </div>
+                        </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}>
                       {fmt(row.followers)}
@@ -710,9 +731,11 @@ function BrandDashboardView({ campaignId }) {
                         <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>
                       )}
                     </td>
-                  </tr>
-                );
-              })}
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
 
