@@ -18,9 +18,12 @@ const HEADER_MAP = {
   mobile: "phone",
   "mobile number": "phone",
   contact: "phone",
+  "contact no": "phone",
+  "contact number": "phone",
 
   email: "email",
   "email address": "email",
+  "email id": "email",
 
   gender: "gender",
 
@@ -42,6 +45,14 @@ const HEADER_MAP = {
   "channel link": "profileLink",
   "creator link": "profileLink",
   url: "profileLink",
+
+  commercial: "commercial",
+  rate: "commercial",
+  "commercial rate": "commercial",
+  "commercials": "commercial",
+  price: "commercial",
+  cost: "commercial",
+  charges: "commercial",
 };
 
 // Multi-platform columns — one link column per platform, e.g.
@@ -202,7 +213,7 @@ Found headers: ${headers.join(", ")}`,
       language: get("language") || "Hindi",
       followers,
       avgViews: Math.round(followers * 0.08),
-      commercial: "",
+      commercial: get("commercial"),
       remark: "",
     };
 

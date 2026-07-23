@@ -256,8 +256,8 @@ export async function syncFromSheetUrl(rawUrl, creators, { mirror = false } = {}
     throw new Error(msg);
   }
 
-  const { merged, added, updated, removed } = syncCreators(creators, rows, { mirror });
-  return { merged, added, updated, removed, rowErrors: parseErrors };
+  const { merged, added, updated, removed, addedKeys } = syncCreators(creators, rows, { mirror });
+  return { merged, added, updated, removed, addedKeys, rowErrors: parseErrors };
 }
 
 export function getSavedSheetLink() {

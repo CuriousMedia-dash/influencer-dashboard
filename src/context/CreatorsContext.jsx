@@ -223,13 +223,22 @@ export function CreatorsProvider({ children }) {
   // in-app edit always survives the next sync. `source`, when given, is
   // stamped onto every row in this call — used to tell "came from the
   // Google Sheet" apart from "added via CSV upload", so a sheet mirror
-  // sync can never delete something a CSV upload added.
-  const pushBaseFieldsToSupabase = useCallback(async (rows, source) => {
+  // sync can never delete something a CSV upload added. `commercialForKeys`,
+  // when given, is a Set of dedupe keys — only those rows also get their
+  // Commercial value pushed, so a sheet's rate/commercial column can
+  // populate a brand-new creator's starting value without ever
+  // overwriting a value someone's already edited in-app for an existing
+  // one.
+  const pushBaseFieldsToSupabase = useCallback(async (rows, source, commercialForKeys) => {
     const payload = rows.map((r) => {
+      const key = dedupeKey(r);
+      const fields = commercialForKeys?.has(key)
+        ? [...SHEET_SYNCED_FIELDS, "commercial"]
+        : SHEET_SYNCED_FIELDS;
       const cols = toCreatorColumns(
-        Object.fromEntries(SHEET_SYNCED_FIELDS.map((k) => [k, r[k]]))
+        Object.fromEntries(fields.map((k) => [k, r[k]]))
       );
-      const row = { ...cols, dedupe_key: dedupeKey(r) };
+      const row = { ...cols, dedupe_key: key };
       if (source) row.source = source;
       return row;
     });
@@ -252,14 +261,15 @@ export function CreatorsProvider({ children }) {
       setSyncStatus("syncing");
       try {
         const beforeSync = creatorsRef.current;
-        const { merged, added, updated, removed, rowErrors } = await syncFromSheetUrl(
+        const { merged, added, updated, removed, addedKeys, rowErrors } = await syncFromSheetUrl(
           rawUrl,
           beforeSync,
           { mirror }
         );
         // Every row here is sheet-sourced, whether brand new or an
-        // update to something that already existed.
-        await pushBaseFieldsToSupabase(merged, "sheet");
+        // update to something that already existed. Commercial only
+        // comes along for the genuinely new ones.
+        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
 
         // Mirror mode's actual deletion happens here — and only for
         // creators whose source is genuinely "sheet". A creator added
@@ -319,12 +329,12 @@ export function CreatorsProvider({ children }) {
       setImportStatus("importing");
       setImportError("");
       try {
-        const { merged, added, updated, rowErrors } = await syncFromSheetUrl(
+        const { merged, added, updated, addedKeys, rowErrors } = await syncFromSheetUrl(
           rawUrl,
           creatorsRef.current,
           { mirror: false }
         );
-        await pushBaseFieldsToSupabase(merged, "sheet");
+        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
         await loadFromSupabase();
         setImportStatus("done");
         return { added, updated, rowErrors };
@@ -352,7 +362,7 @@ export function CreatorsProvider({ children }) {
       const newRows = mergedRows.filter((r) => addedKeySet.has(dedupeKey(r)));
       const existingRows = mergedRows.filter((r) => !addedKeySet.has(dedupeKey(r)));
 
-      if (newRows.length > 0) await pushBaseFieldsToSupabase(newRows, "upload");
+      if (newRows.length > 0) await pushBaseFieldsToSupabase(newRows, "upload", addedKeySet);
       if (existingRows.length > 0) await pushBaseFieldsToSupabase(existingRows);
 
       await loadFromSupabase();
