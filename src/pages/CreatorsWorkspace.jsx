@@ -146,11 +146,14 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
                 count={totalSelected}
                 onMoveToCampaign={() => setMoveModalOpen(true)}
                 onClearSelection={clearSelection}
-                onDeleteSelected={() =>
-                  setPendingDelete({
-                    ids: Array.from(selectedIds),
-                    label: `${totalSelected} selected creator${totalSelected === 1 ? "" : "s"}`,
-                  })
+                onDeleteSelected={
+                  isAdmin
+                    ? () =>
+                        setPendingDelete({
+                          ids: Array.from(selectedIds),
+                          label: `${totalSelected} selected creator${totalSelected === 1 ? "" : "s"}`,
+                        })
+                    : undefined
                 }
               />
 
@@ -164,6 +167,7 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
                 onSort={sortBy}
                 onUpdateField={updateCreatorField}
                 onDeleteRow={(id, name) => setPendingDelete({ ids: [id], label: name })}
+                isAdmin={isAdmin}
               />
             </main>
           </div>

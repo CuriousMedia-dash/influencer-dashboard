@@ -41,6 +41,7 @@ export default function CreatorsTable({
   onSort,
   onUpdateField,
   onDeleteRow,
+  isAdmin,
 }) {
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
 
@@ -286,25 +287,27 @@ export default function CreatorsTable({
                       </div>
                     </td>
 
-                    {/* Delete */}
+                    {/* Delete — admin only */}
                     <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
-                      <button
-                        type="button"
-                        title={`Delete ${r.name}`}
-                        onClick={() => onDeleteRow?.(r.id, r.name)}
-                        className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] border border-transparent transition-colors"
-                        style={{ color: "var(--ink3)" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = "rgba(224,82,75,.3)";
-                          e.currentTarget.style.color = "#E0524B";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = "transparent";
-                          e.currentTarget.style.color = "var(--ink3)";
-                        }}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          title={`Delete ${r.name}`}
+                          onClick={() => onDeleteRow?.(r.id, r.name)}
+                          className="flex h-[22px] w-[22px] items-center justify-center rounded-[6px] border border-transparent transition-colors"
+                          style={{ color: "var(--ink3)" }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = "rgba(224,82,75,.3)";
+                            e.currentTarget.style.color = "#E0524B";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = "transparent";
+                            e.currentTarget.style.color = "var(--ink3)";
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
             );
