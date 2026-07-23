@@ -43,6 +43,7 @@ const HEADER_MAP = {
   link: "profileLink",
   "profile link": "profileLink",
   "channel link": "profileLink",
+  instagram: "profileLink",
   "creator link": "profileLink",
   url: "profileLink",
 
