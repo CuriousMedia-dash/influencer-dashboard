@@ -20,10 +20,7 @@ function loadBrandTheme() {
     const saved = localStorage.getItem(BRAND_THEME_KEY);
     if (saved === "dark" || saved === "light") return saved;
   } catch {
-    // ignore — fall through to system preference
-  }
-  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-    return "dark";
+    // ignore — falls through to the light default below
   }
   return "light";
 }
