@@ -29,7 +29,11 @@ export default function InviteBrandModal({ open, onClose }) {
     setError("");
     setSuccess(null);
     try {
-      const { data, error: fnError } = await supabase.functions.invoke("invite-brand", {
+      // Calling by "hyper-action" (not "invite-brand") on purpose — that's
+      // this function's actual URL slug in Supabase. Renaming it in the
+      // dashboard only changes the display label, not the real routing
+      // address, so the invoke call has to match the address.
+      const { data, error: fnError } = await supabase.functions.invoke("hyper-action", {
         body: { email: email.trim() },
       });
       if (fnError) throw new Error(fnError.message || "Something went wrong.");
