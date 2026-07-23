@@ -247,7 +247,12 @@ export function CreatorsProvider({ children }) {
       .from("creators")
       .upsert(payload, { onConflict: "dedupe_key" });
     if (error) {
+      // This used to only log to the console — meaning a failed save
+      // could show as a successful "Synced" status in the UI, with
+      // nothing actually written. Throwing here lets syncNow's own
+      // error handling catch it and show a real error instead.
       console.error("Failed to save synced creators:", error.message);
+      throw new Error(`Couldn't save to the database: ${error.message}`);
     }
   }, []);
 
