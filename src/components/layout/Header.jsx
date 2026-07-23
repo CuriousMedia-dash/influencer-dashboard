@@ -6,21 +6,8 @@ import { useAuth } from "../../hooks/useAuth";
 import { timeAgo } from "../../utils/format";
 import InviteBrandModal from "../ui/InviteBrandModal";
 
-function statusPillProps(syncStatus, lastSyncedAt) {
-  switch (syncStatus) {
-    case "syncing":
-      return { color: "#E0A62B", label: "Syncing…" };
-    case "synced":
-      return {
-        color: "#2BAE66",
-        label: lastSyncedAt ? `Synced ${timeAgo(lastSyncedAt)}` : "Synced",
-      };
-    case "error":
-      return { color: "#E0524B", label: "Sync error — click gear to retry" };
-    case "not_connected":
-    default:
-      return { color: "var(--ink3)", label: "No sheet linked" };
-  }
+function statusDotColor(syncStatus) {
+  return syncStatus === "synced" ? "#2BAE66" : "var(--ink3)";
 }
 
 export default function Header({ onGearClick }) {
@@ -35,7 +22,7 @@ export default function Header({ onGearClick }) {
     return () => clearInterval(t);
   }, []);
 
-  const { color, label } = statusPillProps(syncStatus, sheetLink?.lastSyncedAt);
+  const color = statusDotColor(syncStatus);
 
   return (
     <header
@@ -70,20 +57,18 @@ export default function Header({ onGearClick }) {
 
         <div className="flex items-center gap-2">
           <div
-            title={sheetLink?.url || "No Google Sheet linked yet — click the gear to connect one"}
-            className="flex items-center gap-1.5 rounded-full border px-3 py-[5px] text-[11px] shadow-[0_1px_2px_rgba(16,36,62,.04)]"
-            style={{
-              borderColor: "var(--ln)",
-              background: "var(--panel)",
-              color: "var(--ink2)",
-              fontFamily: "'JetBrains Mono', monospace",
-            }}
+            title={
+              sheetLink?.url
+                ? `${sheetLink.url}${syncStatus === "synced" && sheetLink.lastSyncedAt ? " — synced " + timeAgo(sheetLink.lastSyncedAt) : ""}`
+                : "No Google Sheet linked yet — click the gear to connect one"
+            }
+            className="flex h-[30px] w-[30px] items-center justify-center rounded-full border shadow-[0_1px_2px_rgba(16,36,62,.04)]"
+            style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
           >
             <span
-              className={"h-1.5 w-1.5 rounded-full" + (syncStatus === "syncing" ? " animate-pulse" : "")}
+              className={"h-2 w-2 rounded-full" + (syncStatus === "syncing" ? " animate-pulse" : "")}
               style={{ background: color }}
             />
-            {label}
           </div>
 
           <button
