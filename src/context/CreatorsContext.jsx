@@ -64,16 +64,34 @@ function creatorFromRow(row) {
   };
 }
 
+// Columns in the database that only accept a real number — anything
+// else (blank, "55,000" with a comma, "updating", free text) has to be
+// converted to either a clean number or null before it's sent, or
+// Postgres rejects the entire batch outright.
+const NUMERIC_COLUMNS = new Set(["commercial"]);
+
+function sanitizeNumericForDb(raw) {
+  if (raw == null || raw === "") return null;
+  const cleaned = String(raw).replace(/,/g, "").trim();
+  const num = Number(cleaned);
+  // Anything that isn't a clean number after stripping commas — "updating",
+  // "8000/home shoots-6,000", a name typed in the cell, etc. — becomes
+  // "no value" rather than crashing the save.
+  return Number.isFinite(num) ? num : null;
+}
+
 function toCreatorColumns(fields) {
   const out = {};
   Object.entries(fields).forEach(([k, v]) => {
     const col = CREATOR_FIELD_MAP[k];
     if (!col) return;
-    // A blank cell in the sheet comes through as "" — fine for text
-    // columns, but Postgres numeric columns (like commercial) reject an
-    // empty string outright. Converting to null here means "no value",
-    // which every column type accepts.
-    out[col] = v === "" ? null : v;
+    if (NUMERIC_COLUMNS.has(col)) {
+      out[col] = sanitizeNumericForDb(v);
+    } else {
+      // A blank cell in the sheet comes through as "" — fine for text
+      // columns, but turning it into null keeps things consistent.
+      out[col] = v === "" ? null : v;
+    }
   });
   return out;
 }
