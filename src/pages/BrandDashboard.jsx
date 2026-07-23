@@ -179,22 +179,49 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
 // Preview + send the "forward locked creators" digest. Shows exactly what
 // the email will contain before anything opens, so there's no surprise
 // when the mail app pops up.
-function ForwardDigestModal({ campaignName, lockedRows, onClose, onSent }) {
+function ForwardDigestModal({ campaign, lockedRows, senderEmail, onClose, onSent }) {
   const total = lockedRows.reduce((sum, r) => sum + parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost), 0);
 
   function handleSend() {
-    const subject = `Locked creators \u2014 ${campaignName || "Campaign"}`;
-    const lines = [
-      `Locked creators for ${campaignName || "this campaign"}:`,
-      "",
-      ...lockedRows.map((r) => {
-        const cost = parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost);
-        return `\u2022 ${r.name} \u2014 \u20b9${fmt(cost)}`;
-      }),
-      "",
-      `Total: \u20b9${fmt(total)}`,
-    ];
-    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
+    const brandName = campaign.brandClient || campaign.client || "Brand";
+    const campaignMonth = campaign.timelineStart
+      ? new Date(campaign.timelineStart).toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+      : "";
+
+    const subject = `Profile Confirmation \u2013 ${brandName} | ${campaignMonth}`;
+
+    const profileBlocks = lockedRows.map((r, i) => {
+      const price = parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost);
+      return [
+        `${i + 1}. ${r.name}`,
+        `Channel Link: ${r.profileLink || ""}`,
+        `Deliverables: `,
+        `Price: \u20b9${fmt(price)}`,
+        `Language: ${r.language || ""}`,
+      ].join("\n");
+    });
+
+    const body = [
+      `Hi ,`,
+      ``,
+      `I hope you\u2019re doing well.`,
+      ``,
+      `As discussed, we are proceeding with the below creator profiles for the ${campaignMonth} campaign.`,
+      ``,
+      `Profile Details`,
+      ...profileBlocks.flatMap((block) => [block, ""]),
+      `Confirmation`,
+      ``,
+      `Request you to please review the above profiles and share your acknowledgement. Your acknowledgement will be considered as confirmation of the mentioned profiles and agreed deliverables.`,
+      ``,
+      `Looking forward to building ${brandName} together.`,
+      ``,
+      `Best,`,
+      senderEmail || "",
+      `Curious Media || (website link)`,
+    ].join("\n");
+
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     onSent();
   }
 
@@ -480,8 +507,9 @@ function BrandDashboardView({ campaignId }) {
 
       {digestOpen && (
         <ForwardDigestModal
-          campaignName={campaign.name}
+          campaign={campaign}
           lockedRows={lockedRows}
+          senderEmail={user?.email}
           onClose={() => setDigestOpen(false)}
           onSent={handleDigestSent}
         />

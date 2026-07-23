@@ -196,34 +196,52 @@ const PLATFORM_GROUP_ORDER = [...PLATFORMS, "No platform"];
  */
 export function groupByPlatform(items, getCreator) {
   const groups = new Map(PLATFORM_GROUP_ORDER.map((p) => [p, []]));
+  const itemErrors = [];
 
-  items.forEach((item) => {
-    const creator = getCreator(item);
-    if (!creator) {
-      // A link exists but the creator it points to isn't in the locally
-      // loaded list — usually a stale cache after a big data change,
-      // rather than the creator genuinely being gone. Showing it under
-      // "No platform" with a placeholder name means it's visible and
-      // obviously wrong, instead of silently vanishing from the table
-      // with no indication anything's missing.
-      const placeholder = { id: item.creatorId, name: "(creator not found \u2014 try refreshing)", platform: "" };
-      groups.get("No platform").push({ item, creator: placeholder, platform: null });
-      return;
-    }
-    const platforms = creatorPlatforms(creator);
-    if (platforms.length === 0) {
-      groups.get("No platform").push({ item, creator, platform: null });
-    } else {
-      platforms.forEach((p) => {
-        if (!groups.has(p.platform)) groups.set(p.platform, []);
-        groups.get(p.platform).push({ item, creator, platform: p });
-      });
+  items.forEach((item, index) => {
+    try {
+      const creator = getCreator(item);
+      if (!creator) {
+        const placeholder = { id: item.creatorId, name: "(creator not found \u2014 try refreshing)", platform: "" };
+        groups.get("No platform").push({ item, creator: placeholder, platform: null });
+        return;
+      }
+      const platforms = creatorPlatforms(creator);
+      if (platforms.length === 0) {
+        groups.get("No platform").push({ item, creator, platform: null });
+      } else {
+        platforms.forEach((p) => {
+          if (!groups.has(p.platform)) groups.set(p.platform, []);
+          groups.get(p.platform).push({ item, creator, platform: p });
+        });
+      }
+    } catch (err) {
+      // One bad item used to be able to throw and silently kill
+      // processing of every item after it in the loop, with the
+      // exception never surfacing anywhere visible. Catching per-item
+      // means the rest still render, and the real error is captured
+      // here instead of vanishing.
+      itemErrors.push({ index, creatorId: item?.creatorId, message: err?.message || String(err) });
     }
   });
 
-  return PLATFORM_GROUP_ORDER
+  // Any platform value that doesn't exactly match the predefined list
+  // still gets its own group above (via groups.set) — this makes sure
+  // that group actually makes it into the final result too, instead of
+  // being silently dropped just because it wasn't one of the expected
+  // names.
+  const extraKeys = Array.from(groups.keys()).filter((k) => !PLATFORM_GROUP_ORDER.includes(k));
+  const allKeys = [...PLATFORM_GROUP_ORDER, ...extraKeys];
+
+  const result = allKeys
     .map((name) => ({ name, rows: groups.get(name) || [] }))
     .filter((g) => g.rows.length > 0);
+
+  if (itemErrors.length > 0) {
+    console.error("groupByPlatform: some items failed to process:", itemErrors);
+  }
+  result.__errors = itemErrors;
+  return result;
 }
 
 // ---------------------------------------------------------------------------

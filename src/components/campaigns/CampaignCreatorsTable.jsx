@@ -157,12 +157,16 @@ export default function CampaignCreatorsTable({
   // section grouping itself — platform now rides along on each row.
   const flatRows = useMemo(() => {
     const groups = groupByPlatform(links, (link) => getCreatorById(link.creatorId));
-    return groups.flatMap((g) => g.rows);
+    return { rows: groups.flatMap((g) => g.rows), errors: groups.__errors || [] };
   }, [links, getCreatorById]);
 
+  if (flatRows.errors.length > 0) {
+    console.error("Some campaign rows failed to process:", flatRows.errors);
+  }
+
   const sortedRows = useMemo(() => {
-    if (sortBy === "none") return flatRows;
-    const rows = [...flatRows];
+    if (sortBy === "none") return flatRows.rows;
+    const rows = [...flatRows.rows];
     const dir = sortDir === "asc" ? 1 : -1;
     rows.sort((a, b) => {
       let av, bv;
