@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isBrandUser, setIsBrandUser] = useState(false);
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(() => {
     const type = readAuthLinkType();
     return type === "invite" || type === "recovery";
@@ -71,6 +72,30 @@ export function AuthProvider({ children }) {
       .maybeSingle()
       .then(({ data }) => {
         if (!cancelled) setIsAdmin(Boolean(data));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // Same idea, but for "is this a brand contact's own account" — used to
+  // keep brand accounts out of the internal app entirely. A brand login
+  // should only ever be able to reach the specific Brand Dashboard links
+  // shared with them, never the internal Workspace itself.
+  useEffect(() => {
+    const email = session?.user?.email;
+    if (!email) {
+      setIsBrandUser(false);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("brand_users")
+      .select("email")
+      .eq("email", email)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIsBrandUser(Boolean(data));
       });
     return () => {
       cancelled = true;
@@ -133,6 +158,7 @@ export function AuthProvider({ children }) {
         authError,
         authNotice,
         isAdmin,
+        isBrandUser,
         needsPasswordSetup,
         signInWithPassword,
         requestPasswordReset,

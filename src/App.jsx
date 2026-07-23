@@ -17,12 +17,48 @@ import Login from "./pages/Login";
 import BrandLogin from "./pages/BrandLogin";
 import SetPassword from "./pages/SetPassword";
 
+// Shown if a brand account ever lands on the internal app's own URL
+// directly — e.g. by bookmarking it, or the browser remembering a session
+// from before. A brand login should only ever be able to reach the
+// specific Brand Dashboard links they're sent, never this app itself.
+function BrandOnlyNotice() {
+  const { user, signOut } = useAuth();
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6" style={{ background: "#E7F0FA" }}>
+      <div
+        className="w-full max-w-sm rounded-[14px] border p-7 text-center"
+        style={{ background: "#fff", borderColor: "#D9E4F2" }}
+      >
+        <h1 className="mb-1.5 text-xl font-semibold" style={{ fontFamily: "Fraunces, serif", color: "#10243E" }}>
+          You're all set
+        </h1>
+        <p className="mb-1.5 text-sm leading-relaxed" style={{ color: "#5B7390" }}>
+          Your password is set and this account ({user?.email}) is ready to go — but there's nothing to see at
+          this address specifically.
+        </p>
+        <p className="mb-5 text-sm leading-relaxed" style={{ color: "#5B7390" }}>
+          Ask your agency contact for the Brand Dashboard link — once you open that, you'll be logged straight
+          in with this same email and password.
+        </p>
+        <button
+          type="button"
+          onClick={signOut}
+          className="w-full rounded-[8px] border py-2.5 text-sm font-medium"
+          style={{ borderColor: "#D9E4F2", color: "#5B7390" }}
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Gates the internal app behind a valid Supabase session. The public
 // routes below (/share/:token, /brand/:token) are handled entirely
 // outside this gate, so external brand viewers never see a login screen —
 // only your own team, signing in with a company email, ever hits this.
 function AuthGate({ children }) {
-  const { session, loading, needsPasswordSetup } = useAuth();
+  const { session, loading, needsPasswordSetup, isBrandUser } = useAuth();
 
   if (loading) {
     return (
@@ -44,6 +80,15 @@ function AuthGate({ children }) {
 
   if (!session) {
     return <Login />;
+  }
+
+  // A brand account, once fully signed in, should never actually see the
+  // internal app itself — only the specific Brand Dashboard links shared
+  // with them. This is a genuine block, not just a hidden link: even if
+  // they land on this exact URL, they get this notice instead of the
+  // real app underneath it.
+  if (isBrandUser) {
+    return <BrandOnlyNotice />;
   }
 
   return children;
