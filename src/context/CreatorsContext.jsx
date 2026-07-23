@@ -229,6 +229,14 @@ export function CreatorsProvider({ children }) {
   // populate a brand-new creator's starting value without ever
   // overwriting a value someone's already edited in-app for an existing
   // one.
+  // Large syncs (hundreds of creators across several sheet tabs) sent as
+  // one giant request can time out with a generic "Failed to fetch" —
+  // the connection dying before a response ever comes back, not a real
+  // database rejection. Splitting into smaller chunks avoids that, and
+  // means a failure partway through only affects what's left, not
+  // everything that already saved successfully.
+  const SAVE_CHUNK_SIZE = 40;
+
   const pushBaseFieldsToSupabase = useCallback(async (rows, source, commercialForKeys) => {
     const payload = rows.map((r) => {
       const key = dedupeKey(r);
@@ -243,16 +251,20 @@ export function CreatorsProvider({ children }) {
       return row;
     });
     if (payload.length === 0) return;
-    const { error } = await supabase
-      .from("creators")
-      .upsert(payload, { onConflict: "dedupe_key" });
-    if (error) {
-      // This used to only log to the console — meaning a failed save
-      // could show as a successful "Synced" status in the UI, with
-      // nothing actually written. Throwing here lets syncNow's own
-      // error handling catch it and show a real error instead.
-      console.error("Failed to save synced creators:", error.message);
-      throw new Error(`Couldn't save to the database: ${error.message}`);
+
+    for (let i = 0; i < payload.length; i += SAVE_CHUNK_SIZE) {
+      const chunk = payload.slice(i, i + SAVE_CHUNK_SIZE);
+      const { error } = await supabase
+        .from("creators")
+        .upsert(chunk, { onConflict: "dedupe_key" });
+      if (error) {
+        const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
+        const totalBatches = Math.ceil(payload.length / SAVE_CHUNK_SIZE);
+        console.error(`Failed to save creators (batch ${batchNum}/${totalBatches}):`, error.message);
+        throw new Error(
+          `Couldn't save to the database (stopped partway through, on batch ${batchNum} of ${totalBatches} — earlier batches saved successfully): ${error.message}`
+        );
+      }
     }
   }, []);
 
