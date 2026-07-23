@@ -18,7 +18,6 @@ const CREATORS_CACHE_KEY = "cm_creators_cache";
 // not just by hiding buttons here).
 const MASTER_SHEET_KEY = "master_sheet";
 
-const AUTO_SYNC_INTERVAL_MS = 7000;
 
 function loadCachedCreators() {
   try {
@@ -390,13 +389,20 @@ export function CreatorsProvider({ children }) {
   );
 
   // The moment the app opens (and someone's logged in): if the shared
-  // master sheet is linked, sync immediately, then keep quietly
-  // refreshing in the background. Background syncs never surface a toast
-  // — only the manual "Sync now" button does.
+  // master sheet is linked, sync once — and only once per app session,
+  // not repeatedly. From then on, syncing only happens when someone
+  // explicitly clicks "Sync now". This also fixes a real bug the old
+  // repeating version had: if a background sync was still in flight with
+  // the *old* link right as someone connected a genuinely new one, the
+  // old sync could finish last and silently overwrite the new link back
+  // to the old one. A single one-time sync removes that race entirely.
+  const didInitialSyncRef = useRef(false);
   useEffect(() => {
     if (!user || !sheetLink?.url) return;
+    if (didInitialSyncRef.current) return;
+    didInitialSyncRef.current = true;
 
-    async function backgroundSync() {
+    async function initialSync() {
       if (syncingRef.current) return;
       syncingRef.current = true;
       try {
@@ -409,8 +415,7 @@ export function CreatorsProvider({ children }) {
       }
     }
 
-    const interval = setInterval(backgroundSync, AUTO_SYNC_INTERVAL_MS);
-    return () => clearInterval(interval);
+    initialSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, sheetLink?.url]);
 
