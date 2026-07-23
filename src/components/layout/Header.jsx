@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Sun, Moon, LogOut } from "lucide-react";
+import { Sun, Moon, LogOut, UserPlus } from "lucide-react";
 import { useCreators } from "../../hooks/useCreators";
 import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../hooks/useAuth";
 import { timeAgo } from "../../utils/format";
+import InviteBrandModal from "../ui/InviteBrandModal";
 
 function statusPillProps(syncStatus, lastSyncedAt) {
   switch (syncStatus) {
@@ -25,7 +26,8 @@ function statusPillProps(syncStatus, lastSyncedAt) {
 export default function Header({ onGearClick }) {
   const { syncStatus, sheetLink } = useCreators();
   const { theme, toggleTheme } = useTheme();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin } = useAuth();
+  const [inviteOpen, setInviteOpen] = useState(false);
   // Re-render every 30s so "Synced N minutes ago" stays roughly current.
   const [, forceTick] = useState(0);
   useEffect(() => {
@@ -122,6 +124,27 @@ export default function Header({ onGearClick }) {
             ⚙
           </button>
 
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              title="Invite a brand contact"
+              aria-label="Invite a brand contact"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+                e.currentTarget.style.color = "var(--ink)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+                e.currentTarget.style.color = "var(--ink2)";
+              }}
+            >
+              <UserPlus size={15} />
+            </button>
+          )}
+
           {user && (
             <button
               type="button"
@@ -144,6 +167,7 @@ export default function Header({ onGearClick }) {
           )}
         </div>
       </div>
+      <InviteBrandModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </header>
   );
 }
