@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut, AlertTriangle } from "lucide-react";
+import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut } from "lucide-react";
 
 // Plain, simple styling — matches the green already used everywhere else
 // in the app for confirmed/paid/locked states, no special new treatment.
@@ -283,14 +283,14 @@ function ConfirmLockModal({ creatorName, onConfirm, onCancel }) {
         style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
       >
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full" style={{ background: LOCK_WASH }}>
-          <AlertTriangle size={20} style={{ color: LOCK_COLOR }} />
+          <Lock size={20} style={{ color: LOCK_COLOR }} />
         </div>
         <h3 className="mb-1.5 text-base font-semibold" style={{ fontFamily: "Fraunces, serif", color: "var(--ink)" }}>
           Lock {creatorName}?
         </h3>
         <p className="mb-5 text-sm leading-relaxed" style={{ color: "var(--ink2)" }}>
-          This can't be undone. Once locked, this creator's Final Cost is permanently frozen and the lock can't be
-          reversed by anyone, including you.
+          Locking a creator freezes their Final Cost, and the lock stays permanent — this is the final step in
+          confirming them.
         </p>
         <div className="flex gap-2">
           <button
@@ -329,6 +329,18 @@ function BrandDashboardView({ campaignId }) {
     async function load() {
       const { data: result, error } = await supabase.rpc("get_brand_dashboard", { p_campaign_id: campaignId });
       if (cancelled) return;
+
+      // If this failed specifically because the session isn't valid
+      // anymore (expired, or never was), that's not a broken link — it's
+      // just "please log in again." Signing out here clears the stale
+      // session, which makes BrandAuthGate correctly show the login
+      // screen instead of this page ever showing a "link not valid"
+      // message that isn't actually true.
+      if (error?.message?.toLowerCase().includes("not authorized")) {
+        await signOut();
+        return;
+      }
+
       if (error || !result || !result.campaign) {
         console.error("Failed to load brand dashboard:", error?.message);
         setData(null);
@@ -338,6 +350,7 @@ function BrandDashboardView({ campaignId }) {
     }
     load();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   useEffect(() => {
