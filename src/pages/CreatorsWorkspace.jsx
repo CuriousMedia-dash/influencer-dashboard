@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { UserPlus } from "lucide-react";
 import TabBar from "../components/layout/TabBar";
 import FilterSidebar from "../components/creators/FilterSidebar";
 import CreatorsTable from "../components/creators/CreatorsTable";
@@ -6,14 +7,18 @@ import SelectionToolbar from "../components/creators/SelectionToolbar";
 import MoveToCampaignModal from "../components/campaigns/MoveToCampaignModal";
 import CampaignsTabContent from "../components/campaigns/CampaignsTabContent";
 import Modal from "../components/ui/Modal";
+import CreateUserModal from "../components/ui/CreateUserModal";
 import { useCreators } from "../hooks/useCreators";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useCreatorFilters } from "../hooks/useCreatorFilters";
 import { useToast } from "../hooks/useToast";
+import { useAuth } from "../hooks/useAuth";
 import { uniqValues } from "../utils/format";
 import { NICHE_COLORS, LANG_COLORS } from "../utils/constants";
 
 export default function CreatorsWorkspace({ activeTab, onTabChange }) {
+  const { isAdmin } = useAuth();
+  const [createUserOpen, setCreateUserOpen] = useState(false);
   const {
     creators,
     selectedIds,
@@ -74,7 +79,28 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
             campaignCount={campaigns.length}
           />
         </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setCreateUserOpen(true)}
+            className="flex h-[42px] flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] border px-3.5 text-[13px] font-medium shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+            style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--up)";
+              e.currentTarget.style.color = "var(--ink)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--panel)";
+              e.currentTarget.style.color = "var(--ink2)";
+            }}
+          >
+            <UserPlus size={15} />
+            Create user
+          </button>
+        )}
       </div>
+
+      <CreateUserModal open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
 
       {activeTab === "creators" ? (
         <>
