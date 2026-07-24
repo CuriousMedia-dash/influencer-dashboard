@@ -541,6 +541,7 @@ function BrandDashboardView({ campaignId }) {
             )}
           </div>
 
+          <div className="flex flex-col items-end gap-3">
           <div className="no-print flex items-center gap-2">
             {saveError && (
               <span className="max-w-[240px] rounded-[8px] px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(224,82,75,.1)", color: "#E0524B" }}>
@@ -582,7 +583,6 @@ function BrandDashboardView({ campaignId }) {
                 Forward locked creators
               </button>
             )}
-            <UserAvatar email={user?.email} avatarUrl={user?.user_metadata?.avatar_url} />
             <button
               type="button"
               onClick={signOut}
@@ -592,6 +592,8 @@ function BrandDashboardView({ campaignId }) {
             >
               <LogOut size={14} />
             </button>
+          </div>
+          {user?.email && <UserAvatar email={user.email} avatarUrl={user.user_metadata?.avatar_url} size={48} />}
           </div>
         </div>
 

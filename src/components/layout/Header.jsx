@@ -56,6 +56,7 @@ export default function Header({ onGearClick }) {
           </h1>
         </div>
 
+        <div className="flex flex-col items-end gap-3">
         <div className="flex items-center gap-2">
           <div
             title={
@@ -132,26 +133,25 @@ export default function Header({ onGearClick }) {
           )}
 
           {user && (
-            <>
-              <UserAvatar email={user.email} avatarUrl={user.user_metadata?.avatar_url} />
-              <button
-                type="button"
-                onClick={signOut}
-                title={`Signed in as ${user.email} — click to sign out`}
-                aria-label="Sign out"
-                className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
-                style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "#E0524B" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--up)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--panel)";
-                }}
-              >
-                <LogOut size={15} />
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={signOut}
+              title={`Signed in as ${user.email} — click to sign out`}
+              aria-label="Sign out"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "#E0524B" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+              }}
+            >
+              <LogOut size={15} />
+            </button>
           )}
+        </div>
+        {user && <UserAvatar email={user.email} avatarUrl={user.user_metadata?.avatar_url} size={48} />}
         </div>
       </div>
       <InviteBrandModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
