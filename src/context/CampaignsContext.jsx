@@ -7,6 +7,7 @@ import {
 import { CampaignsContext } from "./campaignsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
+import { logActivity } from "../utils/activityLog";
 
 // ---- Row <-> app-shape translation ----------------------------------
 // The database uses snake_case columns; the rest of the app expects the
@@ -190,6 +191,7 @@ export function CampaignsProvider({ children }) {
       }
 
       setCampaigns((prev) => [campaignFromRow(data, []), ...prev]);
+      logActivity(user, "campaign_created", { name: data.name });
       return data.id;
     },
     [user]
@@ -207,10 +209,12 @@ export function CampaignsProvider({ children }) {
   }, []);
 
   const deleteCampaign = useCallback(async (campaignId) => {
+    const campaign = campaigns.find((c) => c.id === campaignId);
     setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
     const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
     if (error) console.error("Failed to delete campaign:", error.message);
-  }, []);
+    logActivity(user, "campaign_deleted", { name: campaign?.name });
+  }, [campaigns, user]);
 
   const getCampaignById = useCallback(
     (campaignId) => campaigns.find((c) => c.id === campaignId),
@@ -249,11 +253,13 @@ export function CampaignsProvider({ children }) {
 
       const { error } = await supabase.from("campaign_creator_links").insert(rows);
       if (error) console.error("Failed to add creators to campaign:", error.message);
+      logActivity(user, "creator_added_to_campaign", { campaignName: campaign?.name, count: newIds.length });
     },
-    [campaigns]
+    [campaigns, user]
   );
 
   const removeCreatorFromCampaign = useCallback(async (campaignId, creatorId) => {
+    const campaign = campaigns.find((c) => c.id === campaignId);
     setCampaigns((prev) =>
       prev.map((c) =>
         c.id !== campaignId
@@ -267,7 +273,8 @@ export function CampaignsProvider({ children }) {
       .eq("campaign_id", campaignId)
       .eq("creator_id", creatorId);
     if (error) console.error("Failed to remove creator from campaign:", error.message);
-  }, []);
+    logActivity(user, "creator_removed_from_campaign", { campaignName: campaign?.name });
+  }, [campaigns, user]);
 
   const updateCreatorLink = useCallback(async (campaignId, creatorId, fields) => {
     setCampaigns((prev) =>

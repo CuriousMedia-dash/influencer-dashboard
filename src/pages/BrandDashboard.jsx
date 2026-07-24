@@ -7,6 +7,7 @@ import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
 import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut } from "lucide-react";
 import UserAvatar from "../components/ui/UserAvatar";
+import { logActivity } from "../utils/activityLog";
 
 // Plain, simple styling — matches the green already used everywhere else
 // in the app for confirmed/paid/locked states, no special new treatment.
@@ -429,6 +430,7 @@ function BrandDashboardView({ campaignId }) {
   function handleConfirmLock() {
     if (!confirmLockRow) return;
     updateLinkField(confirmLockRow.creatorId, "brandLocked", true);
+    logActivity(user, "creator_locked", { creatorName: confirmLockRow.name, campaignName: campaign.name });
     setConfirmLockRow(null);
   }
 

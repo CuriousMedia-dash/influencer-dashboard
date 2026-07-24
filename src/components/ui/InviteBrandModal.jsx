@@ -2,7 +2,9 @@ import { useState } from "react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { useAuth } from "../../hooks/useAuth";
 import { getFunctionErrorMessage } from "../../utils/functionError";
+import { logActivity } from "../../utils/activityLog";
 
 /**
  * One-click brand invite: sends the login email AND adds them to the
@@ -16,6 +18,7 @@ export default function InviteBrandModal({ open, onClose }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(null);
   const showToast = useToast();
+  const { user } = useAuth();
 
   function handleClose() {
     setEmail("");
@@ -48,6 +51,7 @@ export default function InviteBrandModal({ open, onClose }) {
           : "Invite sent — they'll get an email to set their password",
         true
       );
+      logActivity(user, "brand_invited", { email: email.trim() });
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {

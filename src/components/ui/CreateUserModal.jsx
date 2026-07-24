@@ -2,7 +2,9 @@ import { useState } from "react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { useAuth } from "../../hooks/useAuth";
 import { getFunctionErrorMessage } from "../../utils/functionError";
+import { logActivity } from "../../utils/activityLog";
 
 /**
  * Creates a team member's account directly — admin picks both the email
@@ -17,6 +19,7 @@ export default function CreateUserModal({ open, onClose }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const showToast = useToast();
+  const { user } = useAuth();
 
   function handleClose() {
     setEmail("");
@@ -50,6 +53,7 @@ export default function CreateUserModal({ open, onClose }) {
 
       setSuccess(true);
       showToast(`Account created for ${email.trim()} — they can sign in right away`, true);
+      logActivity(user, "team_user_created", { email: email.trim() });
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {

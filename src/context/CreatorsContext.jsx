@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
 import { syncFromSheetUrl } from "../utils/sheetSync";
 import { dedupeKey } from "../utils/csvImport";
+import { logActivity } from "../utils/activityLog";
 
 // Local cache of the creators list, so a reload shows the last-known data
 // immediately instead of a blank table while Supabase loads. Supabase is
@@ -195,6 +196,7 @@ export function CreatorsProvider({ children }) {
   const deleteCreators = useCallback((ids) => {
     const idSet = new Set(ids);
     const now = new Date().toISOString();
+    const deletedNames = creatorsRef.current.filter((c) => idSet.has(c.id)).map((c) => c.name);
     setCreators((prev) => prev.map((c) => (idSet.has(c.id) ? { ...c, deletedAt: now } : c)));
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -208,7 +210,8 @@ export function CreatorsProvider({ children }) {
       .then(({ error }) => {
         if (error) console.error("Failed to delete creators:", error.message);
       });
-  }, []);
+    logActivity(user, "creator_deleted", { count: ids.length, name: deletedNames[0] });
+  }, [user]);
 
   const deleteCreator = useCallback(
     (id) => deleteCreators([id]),
@@ -404,6 +407,7 @@ export function CreatorsProvider({ children }) {
 
         setSyncStatus("synced");
         setSyncError("");
+        logActivity(user, "sheet_synced", { added, updated, removed: mirror ? removed : 0 });
         return { added, updated, removed, rowErrors };
       } catch (err) {
         setSyncStatus("error");
@@ -461,8 +465,9 @@ export function CreatorsProvider({ children }) {
       if (existingRows.length > 0) await pushBaseFieldsToSupabase(existingRows);
 
       await loadFromSupabase();
+      logActivity(user, "creators_imported", { added: newRows.length, updated: existingRows.length });
     },
-    [pushBaseFieldsToSupabase, loadFromSupabase]
+    [pushBaseFieldsToSupabase, loadFromSupabase, user]
   );
 
   const unlinkSheet = useCallback(async () => {
