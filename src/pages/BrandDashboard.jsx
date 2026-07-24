@@ -77,6 +77,11 @@ function SlabCard({ label, children, editable, value, onChange, type = "text", p
 function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onClose }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const panelRef = useRef(null);
+  // Local drafts — typing here never touches the server until "Done" is
+  // clicked, same reasoning as the other cost fields: saving on every
+  // keystroke risked an in-flight request reverting what was just typed.
+  const [draftLocked, setDraftLocked] = useState(lockedCost ?? "");
+  const [draftReimbursement, setDraftReimbursement] = useState(reimbursement ?? "");
 
   useEffect(() => {
     if (!anchorRef?.current) return;
@@ -89,13 +94,20 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
     setPos({ top, left });
   }, [anchorRef]);
 
+  function handleDone() {
+    if (String(draftLocked) !== String(lockedCost ?? "")) onChange("brandLockedCost", draftLocked);
+    if (String(draftReimbursement) !== String(reimbursement ?? "")) onChange("brandReimbursement", draftReimbursement);
+    onClose();
+  }
+
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === "Escape") onClose();
+      if (e.key === "Enter") handleDone();
     }
     function handleClick(e) {
       if (panelRef.current && !panelRef.current.contains(e.target) && !e.target.closest(".locked-cost-trigger")) {
-        onClose();
+        handleDone();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -104,9 +116,10 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("click", handleClick);
     };
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, draftLocked, draftReimbursement]);
 
-  const total = parseAmount(lockedCost) + parseAmount(reimbursement);
+  const total = parseAmount(draftLocked) + parseAmount(draftReimbursement);
 
   return (
     <div
@@ -122,8 +135,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
         <input
           autoFocus
           type="text"
-          value={lockedCost ?? ""}
-          onChange={(e) => onChange("brandLockedCost", stripNegative(e.target.value))}
+          value={draftLocked}
+          onChange={(e) => setDraftLocked(stripNegative(e.target.value))}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -134,8 +147,8 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <input
           type="text"
-          value={reimbursement ?? ""}
-          onChange={(e) => onChange("brandReimbursement", stripNegative(e.target.value))}
+          value={draftReimbursement}
+          onChange={(e) => setDraftReimbursement(stripNegative(e.target.value))}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -144,7 +157,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
       <div className="mb-3 text-[11.5px] font-semibold" style={{ color: "var(--ink2)" }}>
         Total: {"\u20b9"}{fmt(total)}
       </div>
-      <button type="button" onClick={onClose} className="w-full rounded-[7px] py-[7px] text-xs font-semibold text-white" style={{ background: "var(--am)" }}>
+      <button type="button" onClick={handleDone} className="w-full rounded-[7px] py-[7px] text-xs font-semibold text-white" style={{ background: "var(--am)" }}>
         Done
       </button>
     </div>
@@ -190,7 +203,7 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
 // value only actually saves (and only then gets validated against Last
 // Cost) once you click the checkmark or press Enter, not on every
 // keystroke.
-function FinalCostCell({ value, disabled, title, error, onConfirm }) {
+function CostInputCell({ value, disabled, title, error, onConfirm }) {
   const [draft, setDraft] = useState(value ?? "");
 
   useEffect(() => {
@@ -874,46 +887,34 @@ function BrandDashboardView({ campaignId, template }) {
                           )}
                         </td>
 
-                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                          <div className="flex items-center gap-1">
-                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                            <input
-                              type="text"
-                              value={row.brandCounterCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", stripNegative(e.target.value))}
-                              placeholder="0"
-                              disabled={!campaign.isBrandViewer}
-                              title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
-                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                            />
-                          </div>
-                        </td>
-
-                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                          <div className="flex items-center gap-1">
-                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                            <input
-                              type="text"
-                              value={row.brandLastCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", stripNegative(e.target.value))}
-                              placeholder="0"
-                              disabled={campaign.isBrandViewer || !row.brandLockedCost}
-                              title={
-                                campaign.isBrandViewer
-                                  ? "Only your team can edit this"
-                                  : !row.brandLockedCost
-                                  ? "Waiting on Proposal Cost first"
-                                  : undefined
-                              }
-                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                            />
-                          </div>
+                        <td className="overflow-visible border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <CostInputCell
+                            value={row.brandCounterCost}
+                            disabled={!campaign.isBrandViewer}
+                            title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
+                            error={fieldErrors[`${row.creatorId}:brandCounterCost`]}
+                            onConfirm={(val) => updateLinkField(row.creatorId, "brandCounterCost", stripNegative(val))}
+                          />
                         </td>
 
                         <td className="overflow-visible border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                          <FinalCostCell
+                          <CostInputCell
+                            value={row.brandLastCost}
+                            disabled={campaign.isBrandViewer || !row.brandLockedCost}
+                            title={
+                              campaign.isBrandViewer
+                                ? "Only your team can edit this"
+                                : !row.brandLockedCost
+                                ? "Waiting on Proposal Cost first"
+                                : undefined
+                            }
+                            error={fieldErrors[`${row.creatorId}:brandLastCost`]}
+                            onConfirm={(val) => updateLinkField(row.creatorId, "brandLastCost", stripNegative(val))}
+                          />
+                        </td>
+
+                        <td className="overflow-visible border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <CostInputCell
                             value={row.brandFinalCost}
                             disabled={row.brandLocked || !campaign.isBrandViewer || !row.brandLastCost}
                             title={
@@ -926,7 +927,7 @@ function BrandDashboardView({ campaignId, template }) {
                                 : undefined
                             }
                             error={fieldErrors[`${row.creatorId}:brandFinalCost`]}
-                            onConfirm={(val) => updateLinkField(row.creatorId, "brandFinalCost", val)}
+                            onConfirm={(val) => updateLinkField(row.creatorId, "brandFinalCost", stripNegative(val))}
                           />
                         </td>
                       </>
