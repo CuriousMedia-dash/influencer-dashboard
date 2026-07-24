@@ -211,7 +211,7 @@ function FinalCostCell({ value, disabled, title, error, onConfirm }) {
           placeholder="0"
           disabled={disabled}
           title={title}
-          className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
           style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
         />
         {!disabled && isDirty && (
@@ -738,9 +738,6 @@ function BrandDashboardView({ campaignId, template }) {
                   </tr>
                   {group.rows.map((row) => {
                     const stageColor = EXECUTION_STAGE_COLORS[row.executionStage] || "#8FA3BC";
-                    const addedTime = row.createdAt
-                      ? new Date(row.createdAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
-                      : null;
 
                     return (
                       <tr key={row.creatorId}>
@@ -759,9 +756,6 @@ function BrandDashboardView({ campaignId, template }) {
                               </a>
                             ) : (
                               <span style={{ color: "var(--ink)" }}>{row.name}</span>
-                            )}
-                            {addedTime && (
-                              <span className="text-[10px]" style={{ color: "var(--ink3)" }}>{addedTime}</span>
                             )}
                           </div>
                         </td>
@@ -806,7 +800,7 @@ function BrandDashboardView({ campaignId, template }) {
                               placeholder="0"
                               disabled={!campaign.isBrandViewer}
                               title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
-                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
                               style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
                           </div>
@@ -822,7 +816,7 @@ function BrandDashboardView({ campaignId, template }) {
                               placeholder="0"
                               disabled={campaign.isBrandViewer}
                               title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
-                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
                               style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
                           </div>
