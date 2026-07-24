@@ -5,6 +5,7 @@ import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../hooks/useAuth";
 import { timeAgo } from "../../utils/format";
 import InviteBrandModal from "../ui/InviteBrandModal";
+import UserAvatar from "../ui/UserAvatar";
 
 function statusDotColor(syncStatus) {
   return syncStatus === "synced" ? "#2BAE66" : "var(--ink3)";
@@ -131,24 +132,25 @@ export default function Header({ onGearClick }) {
           )}
 
           {user && (
-            <button
-              type="button"
-              onClick={signOut}
-              title={`Signed in as ${user.email} — click to sign out`}
-              aria-label="Sign out"
-              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
-              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--up)";
-                e.currentTarget.style.color = "#E0524B";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--panel)";
-                e.currentTarget.style.color = "var(--ink2)";
-              }}
-            >
-              <LogOut size={15} />
-            </button>
+            <>
+              <UserAvatar email={user.email} avatarUrl={user.user_metadata?.avatar_url} />
+              <button
+                type="button"
+                onClick={signOut}
+                title={`Signed in as ${user.email} — click to sign out`}
+                aria-label="Sign out"
+                className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+                style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "#E0524B" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--up)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "var(--panel)";
+                }}
+              >
+                <LogOut size={15} />
+              </button>
+            </>
           )}
         </div>
       </div>

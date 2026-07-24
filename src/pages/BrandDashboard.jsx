@@ -6,6 +6,7 @@ import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
 import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut } from "lucide-react";
+import UserAvatar from "../components/ui/UserAvatar";
 
 // Plain, simple styling — matches the green already used everywhere else
 // in the app for confirmed/paid/locked states, no special new treatment.
@@ -581,12 +582,13 @@ function BrandDashboardView({ campaignId }) {
                 Forward locked creators
               </button>
             )}
+            <UserAvatar email={user?.email} avatarUrl={user?.user_metadata?.avatar_url} />
             <button
               type="button"
               onClick={signOut}
               title="Sign out"
               className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border transition-colors"
-              style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--panel)" }}
+              style={{ borderColor: "var(--ln)", color: "#E0524B", background: "var(--panel)" }}
             >
               <LogOut size={14} />
             </button>
