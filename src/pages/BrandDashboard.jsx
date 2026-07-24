@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { supabaseBrand } from "../lib/supabaseBrandClient";
 import { useBrandAuth } from "../hooks/useBrandAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
@@ -299,7 +299,12 @@ function ForwardDigestModal({ campaign, lockedRows, senderEmail, onClose, onSent
 
 export default function BrandDashboard() {
   const { token: campaignId } = useParams();
-  return <BrandDashboardView key={campaignId} campaignId={campaignId} />;
+  const [searchParams] = useSearchParams();
+  // Old links (shared before templates existed) had no ?template= at
+  // all — defaulting to "full" means they keep working exactly as they
+  // always did, showing everything.
+  const template = searchParams.get("template") === "simple" ? "simple" : "full";
+  return <BrandDashboardView key={campaignId} campaignId={campaignId} template={template} />;
 }
 
 // Confirms before locking — locking is permanent, so this is the one and
@@ -344,7 +349,8 @@ function ConfirmLockModal({ creatorName, onConfirm, onCancel }) {
   );
 }
 
-function BrandDashboardView({ campaignId }) {
+function BrandDashboardView({ campaignId, template }) {
+  const isSimple = template === "simple";
   const { user, signOut } = useBrandAuth();
   const [data, setData] = useState(undefined);
   const [theme, setTheme] = useState(loadBrandTheme);
@@ -420,6 +426,20 @@ function BrandDashboardView({ campaignId }) {
       .rpc("update_brand_dashboard_meta", { p_campaign_id: campaignId, p_field: field, p_value: String(value) })
       .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
+
+  // Client always shows whoever the logged-in brand person actually is —
+  // every time they open this, not just once. Only fires for a genuine
+  // brand login, never for a staff member previewing (they don't have a
+  // "brand name" to fill in with).
+  useEffect(() => {
+    if (!data || !data.campaign) return;
+    if (!data.campaign.isBrandViewer) return;
+    const name = data.campaign.brandUserName;
+    if (name && data.campaign.brandClient !== name) {
+      updateMetaField("brandClient", name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.campaign?.isBrandViewer, data?.campaign?.brandUserName]);
 
   function handleDigestSent() {
     setDigestOpen(false);
@@ -600,8 +620,10 @@ function BrandDashboardView({ campaignId }) {
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <SlabCard label="Client" editable value={campaign.brandClient} onChange={(v) => updateMetaField("brandClient", v)} placeholder={campaign.client || "\u2014"} />
-          <SlabCard label={"Budget (\u20b9)"} editable type="number" value={campaign.brandBudget} onChange={(v) => updateMetaField("brandBudget", v)} placeholder="0" />
+          <SlabCard label="Client">{campaign.brandClient || campaign.client || "\u2014"}</SlabCard>
+          {!isSimple && (
+            <SlabCard label={"Budget (\u20b9)"}>{fmt(campaign.brandBudget || 0)}</SlabCard>
+          )}
           <SlabCard label="Timeline" editable type="date" value={campaign.brandTimelineEnd} onChange={(v) => updateMetaField("brandTimelineEnd", v)} />
           <SlabCard label="Links Posted">{linksPosted}/{linksExpected}</SlabCard>
           <SlabCard label="Locked Profiles">
@@ -614,7 +636,16 @@ function BrandDashboardView({ campaignId }) {
           <table className="w-full border-collapse text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr>
-                {["Creator", "Followers", "Proposal Cost", "Counter Cost", "Final Cost", "Remarks", "Locked Status", "Execution Stage", "Live Video Link"].map((h) => (
+                {[
+                  "Creator",
+                  "Followers",
+                  "Deliverables",
+                  ...(!isSimple ? ["Proposal Cost", "Last Cost", "Counter Cost", "Final Cost"] : []),
+                  "Remarks",
+                  "Locked Status",
+                  "Execution Stage",
+                  "Live Video Link",
+                ].map((h) => (
                   <th
                     key={h}
                     className="whitespace-nowrap border-b px-4 py-3 text-left text-[10.5px] font-semibold uppercase tracking-[.07em]"
@@ -630,7 +661,7 @@ function BrandDashboardView({ campaignId }) {
                 <Fragment key={group.dateKey}>
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={isSimple ? 7 : 11}
                       className="border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[.06em]"
                       style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
                     >
@@ -671,43 +702,85 @@ function BrandDashboardView({ campaignId }) {
                       {fmt(row.followers)}
                     </td>
 
-                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <LockedCostCell
-                        lockedCost={row.brandLockedCost}
-                        reimbursement={row.brandReimbursement}
-                        onChange={(field, value) => updateLinkField(row.creatorId, field, value)}
-                      />
+                    <td className="border-b px-4 py-3 text-[12px]" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
+                      {row.deliverables || <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>}
                     </td>
 
-                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <div className="flex items-center gap-1">
-                        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                        <input
-                          type="text"
-                          value={row.brandCounterCost ?? ""}
-                          onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", e.target.value)}
-                          placeholder="0"
-                          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none"
-                          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                        />
-                      </div>
-                    </td>
+                    {!isSimple && (
+                      <>
+                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          {campaign.isBrandViewer ? (
+                            <span
+                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--bg)", fontFamily: "'JetBrains Mono', monospace" }}
+                              title="Only your team can edit this"
+                            >
+                              {"\u20b9"}{fmt(parseAmount(row.brandLockedCost) + parseAmount(row.brandReimbursement))}
+                            </span>
+                          ) : (
+                            <LockedCostCell
+                              lockedCost={row.brandLockedCost}
+                              reimbursement={row.brandReimbursement}
+                              onChange={(field, value) => updateLinkField(row.creatorId, field, value)}
+                            />
+                          )}
+                        </td>
 
-                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <div className="flex items-center gap-1">
-                        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                        <input
-                          type="text"
-                          value={row.brandFinalCost ?? ""}
-                          onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
-                          placeholder="0"
-                          disabled={row.brandLocked}
-                          title={row.brandLocked ? "Frozen — this creator is locked" : undefined}
-                          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                        />
-                      </div>
-                    </td>
+                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <div className="flex items-center gap-1">
+                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+                            <input
+                              type="text"
+                              value={row.brandLastCost ?? ""}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", e.target.value)}
+                              placeholder="0"
+                              disabled={campaign.isBrandViewer}
+                              title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
+                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                            />
+                          </div>
+                        </td>
+
+                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <div className="flex items-center gap-1">
+                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+                            <input
+                              type="text"
+                              value={row.brandCounterCost ?? ""}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", e.target.value)}
+                              placeholder="0"
+                              disabled={!campaign.isBrandViewer}
+                              title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
+                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                            />
+                          </div>
+                        </td>
+
+                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <div className="flex items-center gap-1">
+                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+                            <input
+                              type="text"
+                              value={row.brandFinalCost ?? ""}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
+                              placeholder="0"
+                              disabled={row.brandLocked || !campaign.isBrandViewer}
+                              title={
+                                row.brandLocked
+                                  ? "Frozen — this creator is locked"
+                                  : !campaign.isBrandViewer
+                                  ? "Only the brand can edit this"
+                                  : undefined
+                              }
+                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked || !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                            />
+                          </div>
+                        </td>
+                      </>
+                    )}
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                       <textarea
@@ -731,15 +804,26 @@ function BrandDashboardView({ campaignId }) {
                           Locked
                         </span>
                       ) : campaign.isBrandViewer ? (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmLockRow(row)}
-                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
-                          style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }}
-                        >
-                          <Unlock size={11} />
-                          Unlocked
-                        </button>
+                        !isSimple && !row.brandFinalCost ? (
+                          <span
+                            title="Enter a Final Cost before this can be locked"
+                            className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium opacity-60"
+                            style={{ borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }}
+                          >
+                            <Unlock size={11} />
+                            Unlocked
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmLockRow(row)}
+                            className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors"
+                            style={{ borderColor: "var(--ln)", color: "var(--ink2)", background: "var(--up)" }}
+                          >
+                            <Unlock size={11} />
+                            Unlocked
+                          </button>
+                        )
                       ) : (
                         <span
                           title="Only the brand can lock a creator"

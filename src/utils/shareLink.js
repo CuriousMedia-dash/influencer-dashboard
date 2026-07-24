@@ -108,6 +108,6 @@ export function buildShareUrl(campaign, getCreatorById) {
  * (fetched live from the database via a scoped, anonymous-safe function),
  * and both the brand and the agency can edit through it.
  */
-export function buildBrandDashboardUrl(campaignId) {
-  return `${window.location.origin}/brand/${campaignId}`;
+export function buildBrandDashboardUrl(campaignId, template = "full") {
+  return `${window.location.origin}/brand/${campaignId}?template=${template}`;
 }
