@@ -33,6 +33,13 @@ function parseAmount(v) {
   return isNaN(n) ? 0 : n;
 }
 
+// Cost fields should never go negative — stripping any "-" as it's typed
+// means it's simply not possible to enter one in the first place, rather
+// than typing it and getting rejected afterward.
+function stripNegative(v) {
+  return String(v ?? "").replace(/-/g, "");
+}
+
 function fmtDate(d) {
   if (!d) return "";
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -116,7 +123,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
           autoFocus
           type="text"
           value={lockedCost ?? ""}
-          onChange={(e) => onChange("brandLockedCost", e.target.value)}
+          onChange={(e) => onChange("brandLockedCost", stripNegative(e.target.value))}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -128,7 +135,7 @@ function LockedCostPopover({ anchorRef, lockedCost, reimbursement, onChange, onC
         <input
           type="text"
           value={reimbursement ?? ""}
-          onChange={(e) => onChange("brandReimbursement", e.target.value)}
+          onChange={(e) => onChange("brandReimbursement", stripNegative(e.target.value))}
           placeholder="0"
           className="w-full rounded-[7px] border px-[9px] py-[6px] text-xs outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -204,7 +211,7 @@ function FinalCostCell({ value, disabled, title, error, onConfirm }) {
         <input
           type="text"
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => setDraft(stripNegative(e.target.value))}
           onKeyDown={(e) => {
             if (e.key === "Enter") confirm();
           }}
@@ -448,6 +455,79 @@ function BrandDashboardView({ campaignId, template }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
+  // Live sync — whenever anyone (brand or your team) changes something on
+  // this campaign, everyone else looking at it sees it immediately, no
+  // refresh needed in either direction. Two separate subscriptions: one
+  // for creator-level changes (cost fields, lock status, remarks), one
+  // for the campaign-level fields (Client, POC, Timeline).
+  useEffect(() => {
+    if (!campaignId) return;
+
+    function mapLinkRow(row) {
+      return {
+        creatorId: row.creator_id,
+        lockedCost: row.locked_cost,
+        executionStage: row.execution_stage,
+        liveLink: row.live_link,
+        liveLinks: Array.isArray(row.live_links) ? row.live_links : [],
+        liveDate: row.live_date,
+        brandLockedCost: row.brand_locked_cost,
+        brandReimbursement: row.brand_reimbursement,
+        brandLastCost: row.brand_last_cost,
+        brandCounterCost: row.brand_counter_cost,
+        brandFinalCost: row.brand_final_cost,
+        brandRemark: row.brand_remark,
+        brandLocked: row.brand_locked,
+        brandLockedAt: row.brand_locked_at,
+        deliverables: row.deliverables,
+        createdAt: row.created_at,
+      };
+    }
+
+    const channel = supabaseBrand
+      .channel(`brand-dashboard-${campaignId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "campaign_creator_links", filter: `campaign_id=eq.${campaignId}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const incoming = mapLinkRow(payload.new);
+          setData((prev) => {
+            if (!prev) return prev;
+            const exists = prev.rows.some((r) => r.creatorId === incoming.creatorId);
+            const rows = exists
+              ? prev.rows.map((r) => (r.creatorId === incoming.creatorId ? { ...r, ...incoming } : r))
+              : [...prev.rows, { ...incoming, name: "", followers: 0, language: "", profileLink: "" }];
+            return { ...prev, rows };
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaigns", filter: `id=eq.${campaignId}` },
+        (payload) => {
+          setData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  campaign: {
+                    ...prev.campaign,
+                    brandClient: payload.new.brand_client,
+                    brandTimelineEnd: payload.new.brand_timeline_end,
+                    brandPoc: payload.new.brand_poc,
+                  },
+                }
+              : prev
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabaseBrand.removeChannel(channel);
+    };
+  }, [campaignId]);
+
   useEffect(() => {
     try {
       localStorage.setItem(BRAND_THEME_KEY, theme);
@@ -586,6 +666,10 @@ function BrandDashboardView({ campaignId, template }) {
 
   const linksPosted = rows.reduce((sum, r) => sum + (Array.isArray(r.liveLinks) ? r.liveLinks.length : 0), 0);
   const linksExpected = Number(campaign.linksExpected) || rows.length;
+  // Computed live from whatever's currently in rows, not the value the
+  // server had at page load — updates instantly the moment a Final Cost
+  // changes or a creator gets locked, no refresh needed.
+  const liveBudget = rows.reduce((sum, r) => sum + parseAmount(r.brandFinalCost), 0);
   const lockedRows = rows.filter((r) => r.brandLocked);
 
   return (
@@ -690,7 +774,7 @@ function BrandDashboardView({ campaignId, template }) {
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
           <SlabCard label="Client">{campaign.brandClient || campaign.client || "\u2014"}</SlabCard>
           {!isSimple && (
-            <SlabCard label={"Budget (\u20b9)"}>{fmt(campaign.brandBudget || 0)}</SlabCard>
+            <SlabCard label={"Budget (\u20b9)"}>{fmt(liveBudget)}</SlabCard>
           )}
           <SlabCard label="Timeline" editable type="date" value={campaign.brandTimelineEnd} onChange={(v) => updateMetaField("brandTimelineEnd", v)} />
           <SlabCard label="Links Posted">{linksPosted}/{linksExpected}</SlabCard>
@@ -796,10 +880,16 @@ function BrandDashboardView({ campaignId, template }) {
                             <input
                               type="text"
                               value={row.brandCounterCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", e.target.value)}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", stripNegative(e.target.value))}
                               placeholder="0"
-                              disabled={!campaign.isBrandViewer}
-                              title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
+                              disabled={!campaign.isBrandViewer || !row.brandLockedCost}
+                              title={
+                                !campaign.isBrandViewer
+                                  ? "Only the brand can edit this"
+                                  : !row.brandLockedCost
+                                  ? "Waiting on Proposal Cost first"
+                                  : undefined
+                              }
                               className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
                               style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
@@ -812,10 +902,16 @@ function BrandDashboardView({ campaignId, template }) {
                             <input
                               type="text"
                               value={row.brandLastCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", e.target.value)}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", stripNegative(e.target.value))}
                               placeholder="0"
-                              disabled={campaign.isBrandViewer}
-                              title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
+                              disabled={campaign.isBrandViewer || !row.brandCounterCost}
+                              title={
+                                campaign.isBrandViewer
+                                  ? "Only your team can edit this"
+                                  : !row.brandCounterCost
+                                  ? "Waiting on Counter Cost first"
+                                  : undefined
+                              }
                               className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
                               style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
@@ -825,12 +921,14 @@ function BrandDashboardView({ campaignId, template }) {
                         <td className="overflow-visible border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                           <FinalCostCell
                             value={row.brandFinalCost}
-                            disabled={row.brandLocked || !campaign.isBrandViewer}
+                            disabled={row.brandLocked || !campaign.isBrandViewer || !row.brandLastCost}
                             title={
                               row.brandLocked
                                 ? "Frozen — this creator is locked"
                                 : !campaign.isBrandViewer
                                 ? "Only the brand can edit this"
+                                : !row.brandLastCost
+                                ? "Waiting on Last Cost first"
                                 : undefined
                             }
                             error={fieldErrors[`${row.creatorId}:brandFinalCost`]}
@@ -865,7 +963,7 @@ function BrandDashboardView({ campaignId, template }) {
                         !isSimple && !row.brandFinalCost ? (
                           <span
                             title="Enter a Final Cost before this can be locked"
-                            className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium opacity-60"
+                            className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
                             style={{ borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }}
                           >
                             <Unlock size={11} />
@@ -885,7 +983,7 @@ function BrandDashboardView({ campaignId, template }) {
                       ) : (
                         <span
                           title="Only the brand can lock a creator"
-                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium opacity-60"
+                          className="flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium"
                           style={{ borderColor: "var(--ln)", color: "var(--ink3)", background: "var(--up)" }}
                         >
                           <Unlock size={11} />

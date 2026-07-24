@@ -36,6 +36,12 @@ export default function BrandLogin() {
         >
           Brand Dashboard
         </div>
+        <div
+          className="mb-4 rounded-[8px] px-3 py-2 text-[11px] leading-relaxed"
+          style={{ background: "#F0F5FB", color: "#5B7390" }}
+        >
+          Restricted to invited brand contacts and agency admins only.
+        </div>
 
         {mode === "signin" ? (
           <>
