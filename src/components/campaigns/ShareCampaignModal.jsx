@@ -29,7 +29,7 @@ export default function ShareCampaignModal({ open, onClose, campaign }) {
       open={open}
       onClose={onClose}
       title="Share brand dashboard"
-      description="This opens a live dashboard for the brand — creator names, followers, your locked costs, execution stage, and live links. They can fill in their own reimbursement, counter/final cost, remarks, and locked status. Anything either side enters saves immediately and is visible to both — including if you open this same link yourself."
+      description="Only your team's admins and invited brand contacts can open this link."
       maxWidth={520}
     >
       <div className="flex items-center gap-2">

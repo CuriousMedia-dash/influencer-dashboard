@@ -25,6 +25,7 @@ function readAuthLinkType() {
 export function BrandAuthProvider({ children }) {
   const [session, setSession] = useState(undefined);
   const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [needsPasswordSetup, setNeedsPasswordSetup] = useState(() => {
     const type = readAuthLinkType();
     return type === "invite" || type === "recovery";
@@ -52,6 +53,22 @@ export function BrandAuthProvider({ children }) {
     return true;
   }, []);
 
+  // "Forgot password?" — sends a reset link to the brand's own email,
+  // via their own separate session, same idea as the invite flow.
+  const requestPasswordReset = useCallback(async (email) => {
+    setAuthError("");
+    setAuthNotice("");
+    const { error } = await supabaseBrand.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
+    if (error) {
+      setAuthError(friendlyAuthError(error, email));
+      return false;
+    }
+    setAuthNotice(`Check ${email} for a link to reset your password.`);
+    return true;
+  }, []);
+
   const setPassword = useCallback(async (password) => {
     setAuthError("");
     const { error } = await supabaseBrand.auth.updateUser({ password });
@@ -75,8 +92,10 @@ export function BrandAuthProvider({ children }) {
         user: session?.user ?? null,
         loading: session === undefined,
         authError,
+        authNotice,
         needsPasswordSetup,
         signInWithPassword,
+        requestPasswordReset,
         setPassword,
         signOut,
       }}
