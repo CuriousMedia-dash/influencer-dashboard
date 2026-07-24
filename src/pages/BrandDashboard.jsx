@@ -159,7 +159,7 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
       >
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <span
-          className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
+          className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
           style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
         >
           {fmt(parseAmount(lockedCost))}
@@ -198,7 +198,7 @@ function FinalCostCell({ value, disabled, title, error, onConfirm }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="relative">
       <div className="flex items-center gap-1">
         <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
         <input
@@ -212,7 +212,7 @@ function FinalCostCell({ value, disabled, title, error, onConfirm }) {
           disabled={disabled}
           title={title}
           className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: disabled ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
         />
         {!disabled && isDirty && (
           <button
@@ -227,7 +227,10 @@ function FinalCostCell({ value, disabled, title, error, onConfirm }) {
         )}
       </div>
       {error && (
-        <span className="max-w-[160px] text-[10px] leading-tight" style={{ color: "#E0524B" }}>
+        <span
+          className="absolute left-0 top-full z-10 mt-1 w-max max-w-[200px] text-[10px] leading-tight"
+          style={{ color: "#E0524B" }}
+        >
           {error}
         </span>
       )}
@@ -775,13 +778,15 @@ function BrandDashboardView({ campaignId, template }) {
                       <>
                         <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                           {campaign.isBrandViewer ? (
-                            <span
-                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--bg)", fontFamily: "'JetBrains Mono', monospace" }}
-                              title="Only your team can edit this"
-                            >
-                              {"\u20b9"}{fmt(parseAmount(row.brandLockedCost) + parseAmount(row.brandReimbursement))}
-                            </span>
+                            <div className="flex items-center gap-1" title="Only your team can edit this">
+                              <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+                              <span
+                                className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px]"
+                                style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                              >
+                                {fmt(parseAmount(row.brandLockedCost) + parseAmount(row.brandReimbursement))}
+                              </span>
+                            </div>
                           ) : (
                             <LockedCostCell
                               lockedCost={row.brandLockedCost}
@@ -801,8 +806,8 @@ function BrandDashboardView({ campaignId, template }) {
                               placeholder="0"
                               disabled={!campaign.isBrandViewer}
                               title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
-                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
                           </div>
                         </td>
@@ -817,13 +822,13 @@ function BrandDashboardView({ campaignId, template }) {
                               placeholder="0"
                               disabled={campaign.isBrandViewer}
                               title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
-                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                              className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
                           </div>
                         </td>
 
-                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                        <td className="overflow-visible border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
                           <FinalCostCell
                             value={row.brandFinalCost}
                             disabled={row.brandLocked || !campaign.isBrandViewer}
