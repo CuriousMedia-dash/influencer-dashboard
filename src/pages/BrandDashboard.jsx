@@ -197,7 +197,7 @@ function ForwardDigestModal({ campaign, lockedRows, senderEmail, onClose, onSent
       return [
         `${i + 1}. ${r.name}`,
         `Channel Link: ${r.profileLink || ""}`,
-        `Deliverables: `,
+        `Deliverables: ${r.deliverables || ""}`,
         `Price: \u20b9${fmt(price)}`,
         `Language: ${r.language || ""}`,
       ].join("\n");
@@ -357,7 +357,7 @@ function BrandDashboardView({ campaignId, template }) {
   const [digestOpen, setDigestOpen] = useState(false);
   const [justSent, setJustSent] = useState(false);
   const [confirmLockRow, setConfirmLockRow] = useState(null);
-  const [saveError, setSaveError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -398,24 +398,37 @@ function BrandDashboardView({ campaignId, template }) {
 
   function updateLinkField(creatorId, field, value) {
     const previousRow = data.rows.find((r) => r.creatorId === creatorId);
+    const errorKey = `${creatorId}:${field}`;
     setData((prev) => ({
       ...prev,
       rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, [field]: value } : r)),
     }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[errorKey];
+      return next;
+    });
     supabaseBrand
       .rpc("update_brand_dashboard_link", { p_campaign_id: campaignId, p_creator_id: creatorId, p_field: field, p_value: String(value) })
       .then(({ error }) => {
         if (error) {
           console.error("Failed to save brand dashboard change:", error.message);
-          // The server refused this (e.g. already locked, or not the
-          // brand trying to lock) — undo the optimistic change and say
-          // why, rather than silently pretending it worked.
+          // The server refused this (e.g. Final Cost below Last Cost,
+          // already locked) — undo the optimistic change and show the
+          // reason right under the field itself, not as a generic
+          // page-level banner.
           setData((prev) => ({
             ...prev,
             rows: prev.rows.map((r) => (r.creatorId === creatorId ? previousRow : r)),
           }));
-          setSaveError(error.message || "That change couldn't be saved.");
-          setTimeout(() => setSaveError(""), 4000);
+          setFieldErrors((prev) => ({ ...prev, [errorKey]: error.message || "Couldn't save that change." }));
+          setTimeout(() => {
+            setFieldErrors((prev) => {
+              const next = { ...prev };
+              delete next[errorKey];
+              return next;
+            });
+          }, 5000);
         }
       });
   }
@@ -565,11 +578,6 @@ function BrandDashboardView({ campaignId, template }) {
 
           <div className="flex flex-col items-end gap-3">
           <div className="no-print flex items-center gap-2">
-            {saveError && (
-              <span className="max-w-[240px] rounded-[8px] px-3 py-1.5 text-[11px] font-medium" style={{ background: "rgba(224,82,75,.1)", color: "#E0524B" }}>
-                {saveError}
-              </span>
-            )}
             {justSent && (
               <span className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium" style={{ background: "rgba(43,174,102,.1)", color: "#2BAE66" }}>
                 <CheckCircle2 size={13} />
@@ -640,7 +648,7 @@ function BrandDashboardView({ campaignId, template }) {
                   "Creator",
                   "Followers",
                   "Deliverables",
-                  ...(!isSimple ? ["Proposal Cost", "Last Cost", "Counter Cost", "Final Cost"] : []),
+                  ...(!isSimple ? ["Proposal Cost", "Counter Cost", "Last Cost", "Final Cost"] : []),
                   "Remarks",
                   "Locked Status",
                   "Execution Stage",
@@ -731,22 +739,6 @@ function BrandDashboardView({ campaignId, template }) {
                             <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
                             <input
                               type="text"
-                              value={row.brandLastCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", e.target.value)}
-                              placeholder="0"
-                              disabled={campaign.isBrandViewer}
-                              title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
-                              className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                            />
-                          </div>
-                        </td>
-
-                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                          <div className="flex items-center gap-1">
-                            <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                            <input
-                              type="text"
                               value={row.brandCounterCost ?? ""}
                               onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", e.target.value)}
                               placeholder="0"
@@ -763,20 +755,43 @@ function BrandDashboardView({ campaignId, template }) {
                             <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
                             <input
                               type="text"
-                              value={row.brandFinalCost ?? ""}
-                              onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
+                              value={row.brandLastCost ?? ""}
+                              onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", e.target.value)}
                               placeholder="0"
-                              disabled={row.brandLocked || !campaign.isBrandViewer}
-                              title={
-                                row.brandLocked
-                                  ? "Frozen — this creator is locked"
-                                  : !campaign.isBrandViewer
-                                  ? "Only the brand can edit this"
-                                  : undefined
-                              }
+                              disabled={campaign.isBrandViewer}
+                              title={campaign.isBrandViewer ? "Only your team can edit this" : undefined}
                               className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked || !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                              style={{ borderColor: "var(--ln)", color: "var(--ink)", background: campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
+                          </div>
+                        </td>
+
+                        <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1">
+                              <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+                              <input
+                                type="text"
+                                value={row.brandFinalCost ?? ""}
+                                onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
+                                placeholder="0"
+                                disabled={row.brandLocked || !campaign.isBrandViewer}
+                                title={
+                                  row.brandLocked
+                                    ? "Frozen — this creator is locked"
+                                    : !campaign.isBrandViewer
+                                    ? "Only the brand can edit this"
+                                    : undefined
+                                }
+                                className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked || !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+                              />
+                            </div>
+                            {fieldErrors[`${row.creatorId}:brandFinalCost`] && (
+                              <span className="max-w-[150px] text-[10px] leading-tight" style={{ color: "#E0524B" }}>
+                                {fieldErrors[`${row.creatorId}:brandFinalCost`]}
+                              </span>
+                            )}
                           </div>
                         </td>
                       </>
