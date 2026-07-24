@@ -47,7 +47,7 @@ export default function ShareCampaignModal({ open, onClose, campaign }) {
       open={open}
       onClose={onClose}
       title="Share brand dashboard"
-      description="Only your team's admins and invited brand contacts can open this link."
+      description="No hard feelings, but this is invite-only."
       maxWidth={480}
     >
       {!chosen ? (

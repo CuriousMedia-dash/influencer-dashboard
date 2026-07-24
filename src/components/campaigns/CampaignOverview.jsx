@@ -321,7 +321,7 @@ export default function CampaignOverview({ campaign, onUpdate }) {
         onSave={(v) => onUpdate({ timelineEnd: v })}
       />
       <OverviewField
-        label="Point of Contact (POC)"
+        label="Agency POC"
         value={campaign.poc || campaign.owner}
         onSave={(v) => onUpdate({ owner: v, poc: v })}
       />

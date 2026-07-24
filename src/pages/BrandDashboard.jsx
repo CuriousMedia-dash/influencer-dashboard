@@ -265,12 +265,12 @@ function ForwardDigestModal({ campaign, lockedRows, senderEmail, onClose, onSent
   const total = lockedRows.reduce((sum, r) => sum + parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost), 0);
 
   function handleSend() {
-    const brandName = campaign.brandClient || campaign.client || "Brand";
+    const campaignName = campaign.name || "Campaign";
     const campaignMonth = campaign.timelineStart
       ? new Date(campaign.timelineStart).toLocaleDateString("en-IN", { month: "long", year: "numeric" })
       : "";
 
-    const subject = `Profile Confirmation \u2013 ${brandName} | ${campaignMonth}`;
+    const subject = `Profile Confirmation \u2013 ${campaignName} | ${campaignMonth}`;
 
     const profileBlocks = lockedRows.map((r, i) => {
       const price = parseAmount(r.brandFinalCost) || parseAmount(r.brandLockedCost);
@@ -296,7 +296,7 @@ function ForwardDigestModal({ campaign, lockedRows, senderEmail, onClose, onSent
       ``,
       `Request you to please review the above profiles and share your acknowledgement. Your acknowledgement will be considered as confirmation of the mentioned profiles and agreed deliverables.`,
       ``,
-      `Looking forward to building ${brandName} together.`,
+      `Looking forward to building ${campaignName} together.`,
       ``,
       `Best,`,
       senderEmail || "",
@@ -559,6 +559,9 @@ function BrandDashboardView({ campaignId, template }) {
     setFieldErrors((prev) => {
       const next = { ...prev };
       delete next[errorKey];
+      // Writing something in Remarks counts as acknowledging any error
+      // on that same row — clears it too, on top of the field it's for.
+      if (field === "brandRemark") delete next[`${creatorId}:brandFinalCost`];
       return next;
     });
     supabaseBrand
@@ -568,20 +571,14 @@ function BrandDashboardView({ campaignId, template }) {
           console.error("Failed to save brand dashboard change:", error.message);
           // The server refused this (e.g. Final Cost below Last Cost,
           // already locked) — undo the optimistic change and show the
-          // reason right under the field itself, not as a generic
-          // page-level banner.
+          // reason right under the field itself. Stays visible until
+          // either a new value is entered for this same field, or a
+          // remark is written on this row — not on a timer.
           setData((prev) => ({
             ...prev,
             rows: prev.rows.map((r) => (r.creatorId === creatorId ? previousRow : r)),
           }));
           setFieldErrors((prev) => ({ ...prev, [errorKey]: error.message || "Couldn't save that change." }));
-          setTimeout(() => {
-            setFieldErrors((prev) => {
-              const next = { ...prev };
-              delete next[errorKey];
-              return next;
-            });
-          }, 5000);
         }
       });
   }
@@ -785,7 +782,7 @@ function BrandDashboardView({ campaignId, template }) {
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <SlabCard label="Client">{campaign.brandClient || campaign.client || "\u2014"}</SlabCard>
+          <SlabCard label="Client POC">{campaign.brandClient || campaign.client || "\u2014"}</SlabCard>
           {!isSimple && (
             <SlabCard label={"Budget (\u20b9)"}>{fmt(liveBudget)}</SlabCard>
           )}
@@ -794,7 +791,7 @@ function BrandDashboardView({ campaignId, template }) {
           <SlabCard label="Locked Profiles">
             <span style={{ color: LOCK_COLOR }}>{lockedRows.length}</span>
           </SlabCard>
-          <SlabCard label="Point of Contact (POC)" editable value={campaign.brandPoc} onChange={(v) => updateMetaField("brandPoc", v)} placeholder={campaign.poc || "\u2014"} />
+          <SlabCard label="Agency POC" editable value={campaign.brandPoc} onChange={(v) => updateMetaField("brandPoc", v)} placeholder={campaign.poc || "\u2014"} />
         </div>
 
         <div className="overflow-auto rounded-[14px] border" style={{ background: "var(--panel)", borderColor: "var(--ln)" }}>
