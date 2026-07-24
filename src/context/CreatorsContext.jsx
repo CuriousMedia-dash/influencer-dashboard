@@ -61,6 +61,7 @@ function creatorFromRow(row) {
     remark: row.remark || "",
     quit: row.quit || false,
     commercial: row.commercial ?? "",
+    deletedAt: row.deleted_at || null,
   };
 }
 
@@ -186,9 +187,15 @@ export function CreatorsProvider({ children }) {
       });
   }, []);
 
+  // "Deleting" a creator only marks when it happened — the row itself,
+  // and every campaign they were ever part of, stays intact. They're
+  // just marked out of the active All Creators list from here on. Kept
+  // in local state rather than removed entirely, so campaign history
+  // pages can still resolve and show their name correctly.
   const deleteCreators = useCallback((ids) => {
     const idSet = new Set(ids);
-    setCreators((prev) => prev.filter((c) => !idSet.has(c.id)));
+    const now = new Date().toISOString();
+    setCreators((prev) => prev.map((c) => (idSet.has(c.id) ? { ...c, deletedAt: now } : c)));
     setSelectedIds((prev) => {
       const next = new Set(prev);
       idSet.forEach((id) => next.delete(id));
@@ -196,7 +203,7 @@ export function CreatorsProvider({ children }) {
     });
     supabase
       .from("creators")
-      .delete()
+      .update({ deleted_at: now })
       .in("id", ids)
       .then(({ error }) => {
         if (error) console.error("Failed to delete creators:", error.message);

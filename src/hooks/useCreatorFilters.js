@@ -95,6 +95,7 @@ export function useCreatorFilters(creators) {
     const lowerSearch = search.trim().toLowerCase();
     const result = creators.filter(
       (r) =>
+        !r.deletedAt &&
         (activePlatforms.size === 0 ||
           platformNames(r).some((p) => activePlatforms.has(p))) &&
         (activeGenders.size === 0 || activeGenders.has(r.gender)) &&

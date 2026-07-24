@@ -68,9 +68,9 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
     <div>
       <div className="mb-3 text-[13px]" style={{ color: "var(--ink2)" }}>
         <b style={{ color: "var(--ink)", fontFamily: "'JetBrains Mono', monospace" }}>
-          {creators.length}
+          {creators.filter((c) => !c.deletedAt).length}
         </b>{" "}
-        total creator{creators.length === 1 ? "" : "s"}
+        total creator{creators.filter((c) => !c.deletedAt).length === 1 ? "" : "s"}
       </div>
 
       <div className="mb-[18px] flex items-center gap-2.5">
