@@ -8,7 +8,7 @@ import { isUrl } from "../../utils/format";
  * `.edit-cell` markup: a value (link/pill/dash) + pencil button that opens
  * an inline popover.
  *
- * variant="link"   -> commercial cell (renders "Deal ↗" link if value is a URL)
+ * variant="link"   -> commercial cell (renders "Link ↗" link if value is a URL)
  * variant="pill"   -> remark cell (renders a rounded pill if value present)
  */
 export default function EditableCell({
@@ -44,7 +44,7 @@ export default function EditableCell({
           className="edit-val min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px]"
           style={{ color: "var(--am)" }}
         >
-          Deal ↗
+          Link ↗
         </a>
       ) : (
         <span

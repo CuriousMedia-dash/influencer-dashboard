@@ -203,7 +203,10 @@ function LiveLinkCountField({ campaign, onUpdate }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(campaign.linksExpected ?? "");
 
-  const posted = (campaign.creatorLinks || []).filter((l) => l.liveLink).length;
+  const posted = (campaign.creatorLinks || []).reduce(
+    (sum, l) => sum + (Array.isArray(l.liveLinks) ? l.liveLinks.length : 0),
+    0
+  );
 
   function startEdit() {
     setDraft(campaign.linksExpected ?? "");

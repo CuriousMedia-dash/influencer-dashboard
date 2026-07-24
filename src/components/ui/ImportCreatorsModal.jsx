@@ -185,12 +185,14 @@ export default function ImportCreatorsModal({ open, onClose }) {
       maxWidth={520}
     >
       <div className="mb-4 flex gap-1 rounded-[10px] p-1" style={{ background: "var(--up)" }}>
-        <TabButton
-          active={tab === TABS.LINK}
-          onClick={() => setTab(TABS.LINK)}
-          icon={<Link2 size={13} />}
-          label="Master sheet"
-        />
+        {isAdmin && (
+          <TabButton
+            active={tab === TABS.LINK}
+            onClick={() => setTab(TABS.LINK)}
+            icon={<Link2 size={13} />}
+            label="Master sheet"
+          />
+        )}
         <TabButton
           active={tab === TABS.UPLOAD}
           onClick={() => setTab(TABS.UPLOAD)}

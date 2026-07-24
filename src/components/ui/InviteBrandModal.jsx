@@ -13,6 +13,7 @@ import { logActivity } from "../../utils/activityLog";
  * editor separately.
  */
 export default function InviteBrandModal({ open, onClose }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -21,6 +22,7 @@ export default function InviteBrandModal({ open, onClose }) {
   const { user } = useAuth();
 
   function handleClose() {
+    setName("");
     setEmail("");
     setError("");
     setSuccess(null);
@@ -28,7 +30,7 @@ export default function InviteBrandModal({ open, onClose }) {
   }
 
   async function handleInvite() {
-    if (!email.trim()) return;
+    if (!email.trim() || !name.trim()) return;
     setSubmitting(true);
     setError("");
     setSuccess(null);
@@ -38,7 +40,7 @@ export default function InviteBrandModal({ open, onClose }) {
       // dashboard only changes the display label, not the real routing
       // address, so the invoke call has to match the address.
       const { data, error: fnError } = await supabase.functions.invoke("hyper-action", {
-        body: { email: email.trim() },
+        body: { email: email.trim(), name: name.trim() },
       });
       if (fnError || data?.error) {
         throw new Error(await getFunctionErrorMessage(fnError, data));
@@ -51,7 +53,7 @@ export default function InviteBrandModal({ open, onClose }) {
           : "Invite sent — they'll get an email to set their password",
         true
       );
-      logActivity(user, "brand_invited", { email: email.trim() });
+      logActivity(user, "brand_invited", { email: email.trim(), name: name.trim() });
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -68,6 +70,19 @@ export default function InviteBrandModal({ open, onClose }) {
       maxWidth={440}
     >
       <label className="mb-1.5 block text-xs font-medium" style={{ color: "var(--ink2)" }}>
+        Brand contact's name
+      </label>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Priya Sharma"
+        className="mb-4 w-full rounded-[8px] border px-3 py-2.5 text-xs outline-none"
+        style={{ borderColor: "var(--ln)", color: "var(--ink)" }}
+        autoFocus
+      />
+
+      <label className="mb-1.5 block text-xs font-medium" style={{ color: "var(--ink2)" }}>
         Brand's email
       </label>
       <input
@@ -77,7 +92,6 @@ export default function InviteBrandModal({ open, onClose }) {
         placeholder="contact@brandcompany.com"
         className="mb-4 w-full rounded-[8px] border px-3 py-2.5 text-xs outline-none"
         style={{ borderColor: "var(--ln)", color: "var(--ink)" }}
-        autoFocus
         onKeyDown={(e) => {
           if (e.key === "Enter") handleInvite();
         }}
@@ -107,7 +121,7 @@ export default function InviteBrandModal({ open, onClose }) {
         <button
           type="button"
           onClick={handleInvite}
-          disabled={submitting || !email.trim()}
+          disabled={submitting || !email.trim() || !name.trim()}
           className="flex-1 rounded-[7px] py-2.5 text-xs font-semibold text-white disabled:opacity-60"
           style={{ background: "var(--am)" }}
         >

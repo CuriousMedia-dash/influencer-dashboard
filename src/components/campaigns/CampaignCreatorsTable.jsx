@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Lock, Unlock, X, ArrowUpDown, CreditCard, Mail, Pencil, Check, Flag } from "lucide-react";
 import EditableCell from "../ui/EditableCell";
+import MultiLinkEditor from "./MultiLinkEditor";
 import CopyButton from "../ui/CopyButton";
 import EditPopover from "../ui/EditPopover";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
@@ -37,6 +38,7 @@ const COLS = [
   ["Name", 150],
   ["Platform", 110],
   ["Followers", 84],
+  ["Deliverables", 150],
   ["Phone", 120],
   ["Email", 170],
   ["Negotiation Status", 140],
@@ -334,6 +336,17 @@ export default function CampaignCreatorsTable({
                     {fmt(creator.followers)}
                   </td>
 
+                  <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
+                    <textarea
+                      value={link.deliverables ?? ""}
+                      onChange={(e) => onUpdateLink(link.creatorId, { deliverables: e.target.value })}
+                      placeholder={"e.g. 1 Reel + 1 Story"}
+                      rows={2}
+                      className="w-full resize-y rounded-[6px] border px-2 py-1 text-[11px] outline-none"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)" }}
+                    />
+                  </td>
+
                   <td
                     className="relative border-b px-3 py-2"
                     style={{ borderColor: "var(--ln)", color: "var(--ink2)", fontFamily: "'JetBrains Mono', monospace" }}
@@ -466,11 +479,9 @@ export default function CampaignCreatorsTable({
                   </td>
 
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
-                    <EditableCell
-                      value={link.liveLink}
-                      label="Live video link"
-                      variant="link"
-                      onSave={(val) => onUpdateLink(link.creatorId, { liveLink: val })}
+                    <MultiLinkEditor
+                      links={link.liveLinks}
+                      onChange={(newLinks) => onUpdateLink(link.creatorId, { liveLinks: newLinks })}
                     />
                   </td>
 

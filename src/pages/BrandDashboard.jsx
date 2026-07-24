@@ -491,7 +491,7 @@ function BrandDashboardView({ campaignId }) {
 
   const { campaign } = data;
 
-  const linksPosted = rows.filter((r) => r.liveLink).length;
+  const linksPosted = rows.reduce((sum, r) => sum + (Array.isArray(r.liveLinks) ? r.liveLinks.length : 0), 0);
   const linksExpected = Number(campaign.linksExpected) || rows.length;
   const lockedRows = rows.filter((r) => r.brandLocked);
 
