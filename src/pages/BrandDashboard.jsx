@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "../lib/supabaseClient";
-import { useAuth } from "../hooks/useAuth";
+import { supabaseBrand } from "../lib/supabaseBrandClient";
+import { useBrandAuth } from "../hooks/useBrandAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
@@ -345,7 +345,7 @@ function ConfirmLockModal({ creatorName, onConfirm, onCancel }) {
 }
 
 function BrandDashboardView({ campaignId }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut } = useBrandAuth();
   const [data, setData] = useState(undefined);
   const [theme, setTheme] = useState(loadBrandTheme);
   const [digestOpen, setDigestOpen] = useState(false);
@@ -356,7 +356,7 @@ function BrandDashboardView({ campaignId }) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data: result, error } = await supabase.rpc("get_brand_dashboard", { p_campaign_id: campaignId });
+      const { data: result, error } = await supabaseBrand.rpc("get_brand_dashboard", { p_campaign_id: campaignId });
       if (cancelled) return;
 
       // If this failed specifically because the session isn't valid
@@ -396,7 +396,7 @@ function BrandDashboardView({ campaignId }) {
       ...prev,
       rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, [field]: value } : r)),
     }));
-    supabase
+    supabaseBrand
       .rpc("update_brand_dashboard_link", { p_campaign_id: campaignId, p_creator_id: creatorId, p_field: field, p_value: String(value) })
       .then(({ error }) => {
         if (error) {
@@ -416,7 +416,7 @@ function BrandDashboardView({ campaignId }) {
 
   function updateMetaField(field, value) {
     setData((prev) => ({ ...prev, campaign: { ...prev.campaign, [field]: value } }));
-    supabase
+    supabaseBrand
       .rpc("update_brand_dashboard_meta", { p_campaign_id: campaignId, p_field: field, p_value: String(value) })
       .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
@@ -430,7 +430,7 @@ function BrandDashboardView({ campaignId }) {
   function handleConfirmLock() {
     if (!confirmLockRow) return;
     updateLinkField(confirmLockRow.creatorId, "brandLocked", true);
-    logActivity(user, "creator_locked", { creatorName: confirmLockRow.name, campaignName: campaign.name });
+    logActivity(user, "creator_locked", { creatorName: confirmLockRow.name, campaignName: campaign.name }, supabaseBrand);
     setConfirmLockRow(null);
   }
 

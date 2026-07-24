@@ -8,7 +8,9 @@ import { CampaignsProvider } from "./context/CampaignsContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider } from "./context/AuthContext";
+import { BrandAuthProvider } from "./context/BrandAuthContext";
 import { useAuth } from "./hooks/useAuth";
+import { useBrandAuth } from "./hooks/useBrandAuth";
 
 import Workspace from "./pages/Workspace";
 import SharedCampaignView from "./pages/SharedCampaignView";
@@ -96,11 +98,12 @@ function AuthGate({ children }) {
 
 // Brand Dashboard now requires a real login too — the brand's own account,
 // set up the same way as a team invite (one-time email link → they pick
-// a password → sign in with email + password after that). This is a
-// separate gate from AuthGate above since it shows a different login
-// screen, but reuses the exact same session/auth system underneath.
+// a password → sign in with email + password after that). This uses its
+// own separate session entirely (see BrandAuthProvider/useBrandAuth) —
+// signing in or out here never touches the Influencer Dashboard's own
+// login, and vice versa. Two independent logins, not one shared one.
 function BrandAuthGate({ children }) {
-  const { session, loading, needsPasswordSetup } = useAuth();
+  const { session, loading, needsPasswordSetup } = useBrandAuth();
 
   if (loading) {
     return (
@@ -114,7 +117,7 @@ function BrandAuthGate({ children }) {
   }
 
   if (needsPasswordSetup && session) {
-    return <SetPassword />;
+    return <SetPassword useAuthHook={useBrandAuth} />;
   }
 
   if (!session) {
@@ -165,7 +168,7 @@ export default function App() {
 
                   {/* Brand Dashboard now requires the brand's own login —
                       no longer a public, anyone-with-the-link route. */}
-                  <Route path="/brand/:token" element={<BrandAuthGate><BrandDashboard /></BrandAuthGate>} />
+                  <Route path="/brand/:token" element={<BrandAuthProvider><BrandAuthGate><BrandDashboard /></BrandAuthGate></BrandAuthProvider>} />
 
                   <Route
                     path="/*"

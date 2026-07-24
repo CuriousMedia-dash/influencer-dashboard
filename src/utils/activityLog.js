@@ -4,11 +4,13 @@ import { supabase } from "../lib/supabaseClient";
  * Records a single action in the activity log. Fire-and-forget — never
  * blocks or breaks the action it's logging, even if the write itself
  * fails (a failed log entry shouldn't stop someone from actually doing
- * their work).
+ * their work). Accepts an optional client — Brand Dashboard actions pass
+ * supabaseBrand, since it now has its own independent session separate
+ * from the main app's.
  */
-export function logActivity(user, action, details = {}) {
+export function logActivity(user, action, details = {}, client = supabase) {
   if (!user) return;
-  supabase
+  client
     .from("activity_log")
     .insert({
       actor_id: user.id,

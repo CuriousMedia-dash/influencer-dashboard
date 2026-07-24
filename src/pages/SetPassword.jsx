@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 
-export default function SetPassword() {
-  const { setPassword, authError } = useAuth();
+export default function SetPassword({ useAuthHook = useAuth }) {
+  const { setPassword, authError } = useAuthHook();
   const [password, setPasswordValue] = useState("");
   const [confirm, setConfirm] = useState("");
   const [localError, setLocalError] = useState("");

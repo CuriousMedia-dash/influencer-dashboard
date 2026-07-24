@@ -64,7 +64,7 @@ export default function ShareCampaignModal({ open, onClose, campaign }) {
         style={{ color: "var(--ink2)" }}
       >
         <ExternalLink size={12} />
-        Preview what they'll see
+        Open
       </a>
     </Modal>
   );
