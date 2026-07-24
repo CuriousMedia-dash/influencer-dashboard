@@ -882,14 +882,8 @@ function BrandDashboardView({ campaignId, template }) {
                               value={row.brandCounterCost ?? ""}
                               onChange={(e) => updateLinkField(row.creatorId, "brandCounterCost", stripNegative(e.target.value))}
                               placeholder="0"
-                              disabled={!campaign.isBrandViewer || !row.brandLockedCost}
-                              title={
-                                !campaign.isBrandViewer
-                                  ? "Only the brand can edit this"
-                                  : !row.brandLockedCost
-                                  ? "Waiting on Proposal Cost first"
-                                  : undefined
-                              }
+                              disabled={!campaign.isBrandViewer}
+                              title={!campaign.isBrandViewer ? "Only the brand can edit this" : undefined}
                               className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
                               style={{ borderColor: "var(--ln)", color: "var(--ink)", background: "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
                             />
@@ -904,12 +898,12 @@ function BrandDashboardView({ campaignId, template }) {
                               value={row.brandLastCost ?? ""}
                               onChange={(e) => updateLinkField(row.creatorId, "brandLastCost", stripNegative(e.target.value))}
                               placeholder="0"
-                              disabled={campaign.isBrandViewer || !row.brandCounterCost}
+                              disabled={campaign.isBrandViewer || !row.brandLockedCost}
                               title={
                                 campaign.isBrandViewer
                                   ? "Only your team can edit this"
-                                  : !row.brandCounterCost
-                                  ? "Waiting on Counter Cost first"
+                                  : !row.brandLockedCost
+                                  ? "Waiting on Proposal Cost first"
                                   : undefined
                               }
                               className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed"
