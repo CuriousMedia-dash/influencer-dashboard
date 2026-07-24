@@ -5,7 +5,7 @@ import { useBrandAuth } from "../hooks/useBrandAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
-import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut } from "lucide-react";
+import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut, Check } from "lucide-react";
 import UserAvatar from "../components/ui/UserAvatar";
 import { logActivity } from "../utils/activityLog";
 
@@ -175,6 +175,63 @@ function LockedCostCell({ lockedCost, reimbursement, onChange }) {
         />
       )}
     </>
+  );
+}
+
+// Final Cost needs a deliberate confirm step — typing "500" one digit at
+// a time shouldn't trigger a "too low" rejection after just the "5". The
+// value only actually saves (and only then gets validated against Last
+// Cost) once you click the checkmark or press Enter, not on every
+// keystroke.
+function FinalCostCell({ value, disabled, title, error, onConfirm }) {
+  const [draft, setDraft] = useState(value ?? "");
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  const isDirty = String(draft ?? "") !== String(value ?? "");
+
+  function confirm() {
+    if (!isDirty) return;
+    onConfirm(draft);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") confirm();
+          }}
+          placeholder="0"
+          disabled={disabled}
+          title={title}
+          className="w-16 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ borderColor: "var(--ln)", color: "var(--ink)", background: disabled ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
+        />
+        {!disabled && isDirty && (
+          <button
+            type="button"
+            onClick={confirm}
+            title="Confirm"
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[5px] text-white"
+            style={{ background: "#2BAE66" }}
+          >
+            <Check size={12} />
+          </button>
+        )}
+      </div>
+      {error && (
+        <span className="max-w-[160px] text-[10px] leading-tight" style={{ color: "#E0524B" }}>
+          {error}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -767,32 +824,19 @@ function BrandDashboardView({ campaignId, template }) {
                         </td>
 
                         <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-1">
-                              <span style={{ color: "var(--ink3)" }}>{"\u20b9"}</span>
-                              <input
-                                type="text"
-                                value={row.brandFinalCost ?? ""}
-                                onChange={(e) => updateLinkField(row.creatorId, "brandFinalCost", e.target.value)}
-                                placeholder="0"
-                                disabled={row.brandLocked || !campaign.isBrandViewer}
-                                title={
-                                  row.brandLocked
-                                    ? "Frozen — this creator is locked"
-                                    : !campaign.isBrandViewer
-                                    ? "Only the brand can edit this"
-                                    : undefined
-                                }
-                                className="w-20 rounded-[6px] border px-1.5 py-0.5 text-[12px] outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                                style={{ borderColor: "var(--ln)", color: "var(--ink)", background: row.brandLocked || !campaign.isBrandViewer ? "var(--bg)" : "var(--up)", fontFamily: "'JetBrains Mono', monospace" }}
-                              />
-                            </div>
-                            {fieldErrors[`${row.creatorId}:brandFinalCost`] && (
-                              <span className="max-w-[150px] text-[10px] leading-tight" style={{ color: "#E0524B" }}>
-                                {fieldErrors[`${row.creatorId}:brandFinalCost`]}
-                              </span>
-                            )}
-                          </div>
+                          <FinalCostCell
+                            value={row.brandFinalCost}
+                            disabled={row.brandLocked || !campaign.isBrandViewer}
+                            title={
+                              row.brandLocked
+                                ? "Frozen — this creator is locked"
+                                : !campaign.isBrandViewer
+                                ? "Only the brand can edit this"
+                                : undefined
+                            }
+                            error={fieldErrors[`${row.creatorId}:brandFinalCost`]}
+                            onConfirm={(val) => updateLinkField(row.creatorId, "brandFinalCost", val)}
+                          />
                         </td>
                       </>
                     )}
