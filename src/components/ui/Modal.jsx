@@ -26,7 +26,7 @@ export default function Modal({ open, onClose, title, description, children, max
       }}
     >
       <div
-        className="w-full rounded-[14px] border p-6 shadow-[0_12px_40px_rgba(16,36,62,.18)]"
+        className="w-full max-h-[90vh] overflow-y-auto rounded-[14px] border p-6 shadow-[0_12px_40px_rgba(16,36,62,.18)]"
         style={{ background: "var(--panel)", borderColor: "var(--ln)", maxWidth }}
       >
         <div className="mb-1.5 flex items-start justify-between gap-3">
