@@ -77,8 +77,12 @@ const PLATFORM_LINK_HEADER_MAP = {
   linkedin: "LinkedIn",
 };
 
-// Fields that must be present and non-empty for a row to be valid.
-const REQUIRED_FIELDS = ["name", "followers"];
+// The only column that truly must be present for a row to mean anything.
+// Followers is NOT required — a blank or unparseable Followers cell no
+// longer drops the row; it's imported with followers = 0 instead. No
+// creator should ever be silently excluded just because one column
+// (followers, city, language, etc.) is empty for them.
+const REQUIRED_FIELDS = ["name"];
 
 function normaliseHeaderCell(h) {
   return String(h ?? "").trim().toLowerCase().replace(/[^a-z ]/g, "").trim();
@@ -89,19 +93,23 @@ function normaliseHeaderCell(h) {
  * spacer row, or a logo/legend above the actual header row — not just a
  * clean header on line 1. Rather than assume row 1 is always the header,
  * scan the first several lines and use whichever one actually contains
- * both a Name-like and a Followers-like column. Falls back to line 0 if
- * nothing matches, so the existing "missing required columns" error still
- * fires with a sensible message instead of silently misbehaving.
+ * a Name-like column (and, preferably, a Followers-like one too — but a
+ * sheet that genuinely has no follower counts yet shouldn't fail to
+ * import over that). Falls back to line 0 if nothing matches at all, so
+ * the existing "missing required columns" error still fires with a
+ * sensible message instead of silently misbehaving.
  */
 function findHeaderRowIndex(lines) {
   const maxScan = Math.min(lines.length, 15);
+  let nameOnlyFallback = null;
   for (let i = 0; i < maxScan; i++) {
     const cells = parseCsvLine(lines[i]).map(normaliseHeaderCell);
     const hasName = cells.some((c) => HEADER_MAP[c] === "name");
     const hasFollowers = cells.some((c) => HEADER_MAP[c] === "followers");
     if (hasName && hasFollowers) return i;
+    if (hasName && nameOnlyFallback === null) nameOnlyFallback = i;
   }
-  return 0;
+  return nameOnlyFallback !== null ? nameOnlyFallback : 0;
 }
 
 // Normalise a phone number to digits-only for dedup comparison.
@@ -121,6 +129,25 @@ export function normaliseLink(raw) {
     .replace(/\/+$/, "");
 }
 
+// Real-world sheets are full of placeholder text in the link column —
+// "N/A", "-", "TBD", "pending", "updating", a stray space — and none of
+// that is an actual profile link. Treating it as one is dangerous: every
+// row that happens to share the same placeholder text would collapse
+// into a single "duplicate" and silently overwrite each other. A string
+// only counts as a real link if it actually has a domain with a dot in
+// it (e.g. "instagram.com"), same as a browser would require.
+function isPlausibleLink(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return false;
+  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const { hostname } = new URL(withScheme);
+    return hostname.includes(".") && hostname.length > 3;
+  } catch {
+    return false;
+  }
+}
+
 // A creator is matched purely by their platform link — two rows with the
 // same (normalised) profile link on the same platform are the same
 // creator entry, full stop. Name/phone are no longer part of the match:
@@ -128,6 +155,7 @@ export function normaliseLink(raw) {
 // recognised as the same person, and it never gets fooled into merging
 // two different people who happen to share a phone number.
 export function linkMatchKey(row) {
+  if (!isPlausibleLink(row.profileLink)) return null;
   const link = normaliseLink(row.profileLink);
   if (!link) return null;
   const platform = (row.platform || "").trim().toLowerCase();
@@ -180,7 +208,7 @@ export function parseCsvImport(csvText) {
   });
   const hasPlatformColumns = Object.keys(platformColIndex).length > 0;
 
-  // Check that at minimum Name and Followers columns exist.
+  // Check that at minimum the Name column exists.
   const missingCols = REQUIRED_FIELDS.filter((f) => !(f in fieldIndex));
   if (missingCols.length > 0) {
     return {
@@ -217,18 +245,16 @@ Found headers: ${headers.join(", ")}`,
 
     const name = get("name");
     const followersRaw = get("followers");
+    // A blank or unparseable Followers cell is never a reason to drop
+    // the row — parseN already returns 0 for anything it can't read, so
+    // the creator still gets imported with everything else that WAS
+    // filled in, just with followers = 0 for now.
     const followers = parseN(followersRaw);
 
     const rowErrors = [];
 
     if (!name) {
       rowErrors.push("Name is empty");
-    }
-
-    if (!followersRaw) {
-      rowErrors.push("Followers is empty");
-    } else if (followers === 0 && followersRaw !== "0") {
-      rowErrors.push(`Followers value "${followersRaw}" could not be parsed (expected e.g. 950K, 1.2M, or 950000)`);
     }
 
     if (rowErrors.length > 0) {
@@ -298,7 +324,7 @@ Found headers: ${headers.join(", ")}`,
  * linkless row landing on the same key and overwriting each other.
  */
 export function dedupeKey(row) {
-  const link = normaliseLink(row.profileLink);
+  const link = isPlausibleLink(row.profileLink) ? normaliseLink(row.profileLink) : "";
   const platform = (row.platform || "").trim().toLowerCase();
   if (link) return `link|${link}|${platform}`;
   const normPhone = normalisePhone(row.phone);
