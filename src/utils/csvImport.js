@@ -228,7 +228,6 @@ Found headers: ${headers.join(", ")}`,
   const errors = [];
 
   for (let i = headerRowIndex + 1; i < lines.length; i++) {
-    const rowNum = i + 1; // 1-based
     const cols = parseCsvLine(lines[i]);
 
     // Google Sheets exports pad the sheet out to its full row/column range,
@@ -243,28 +242,17 @@ Found headers: ${headers.join(", ")}`,
         ? (cols[fieldIndex[field]] ?? "").trim()
         : "";
 
-    const name = get("name");
+    // Nothing here is a reason to drop the row — every field just takes
+    // whatever's in the sheet, or a sane default if it's blank. A blank
+    // Name still imports (falls back to "Unnamed creator" so it's not
+    // literally empty in the table); a blank/unparseable Followers cell
+    // imports as 0 (parseN already returns 0 for anything it can't
+    // read). The ONLY thing that skips a row is the fully-blank-row
+    // check above — no single column being empty ever excludes a
+    // creator from the import.
+    const name = get("name") || "Unnamed creator";
     const followersRaw = get("followers");
-    // A blank or unparseable Followers cell is never a reason to drop
-    // the row — parseN already returns 0 for anything it can't read, so
-    // the creator still gets imported with everything else that WAS
-    // filled in, just with followers = 0 for now.
     const followers = parseN(followersRaw);
-
-    const rowErrors = [];
-
-    if (!name) {
-      rowErrors.push("Name is empty");
-    }
-
-    if (rowErrors.length > 0) {
-      errors.push({
-        rowNum,
-        name: name || "(no name)",
-        message: rowErrors.join("; "),
-      });
-      continue;
-    }
 
     // Build one row per platform. If the sheet has per-platform link
     // columns (Instagram Link / YouTube Link / ...), emit one standalone
