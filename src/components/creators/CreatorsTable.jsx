@@ -156,7 +156,7 @@ export default function CreatorsTable({
                       style={{ background: lc }}
                     />
                     {platform?.link ? (
-                      
+                      <a
                         href={platform.link}
                         target="_blank"
                         rel="noreferrer"
