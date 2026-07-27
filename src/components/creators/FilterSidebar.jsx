@@ -62,6 +62,10 @@ export default function FilterSidebar({
   toggleLang,
   languages,
   langColors,
+  activeCities,
+  toggleCity,
+  cities = [],
+  cityColors = {},
   range,
   setRange,
   followerBounds,
@@ -227,6 +231,24 @@ export default function FilterSidebar({
           onToggle={toggleLang}
         />
       </div>
+
+      {/* City */}
+      {cities.length > 0 && (
+        <div className="fg mb-[18px]">
+          <div
+            className="fl mb-[9px] text-[11px] font-semibold uppercase tracking-[.07em]"
+            style={{ color: "var(--ink3)" }}
+          >
+            City
+          </div>
+          <ChipGroup
+            values={cities}
+            colorMap={cityColors}
+            activeSet={activeCities}
+            onToggle={toggleCity}
+          />
+        </div>
+      )}
 
       {/* Follower range */}
       <RangeSlider

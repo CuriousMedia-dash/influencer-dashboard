@@ -23,6 +23,7 @@ const COLUMNS = [
   { key: "gender", label: "Gender", sortable: true, width: 76 },
   { key: "category", label: "Niche", sortable: true, width: 92 },
   { key: "language", label: "Language", sortable: true, width: 84 },
+  { key: "city", label: "City", sortable: true, width: 100 },
   { key: "tier", label: "Category", sortable: true, width: 90 },
   { key: "phone", label: "Phone", sortable: false, width: 140 },
   { key: "email", label: "Email", sortable: false, width: 190 },
@@ -54,7 +55,7 @@ export default function CreatorsTable({
     >
       <table
         className="table-fixed border-collapse text-xs"
-        style={{ width: "100%", minWidth: 1340 }}
+        style={{ width: "100%", minWidth: 1440 }}
       >
         <thead>
           <tr>
@@ -213,6 +214,19 @@ export default function CreatorsTable({
                     {/* Language */}
                     <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
                       <Badge color={lc}>{r.language}</Badge>
+                    </td>
+
+                    {/* City (editable) */}
+                    <td
+                      className="overflow-visible border-b px-3 py-2"
+                      style={{ borderColor: "var(--ln)" }}
+                    >
+                      <EditableCell
+                        value={r.city}
+                        label="City"
+                        variant="plain"
+                        onSave={(val) => onUpdateField(r.id, "city", val)}
+                      />
                     </td>
 
                     {/* Category (renamed from Tier) */}

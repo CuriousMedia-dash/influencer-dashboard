@@ -37,11 +37,13 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
     setSearch,
     activeNiches,
     activeLangs,
+    activeCities,
     activePlatforms,
     activeGenders,
     activeTiers,
     toggleNiche,
     toggleLang,
+    toggleCity,
     togglePlatform,
     toggleGender,
     toggleTier,
@@ -59,6 +61,7 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
 
   const niches = useMemo(() => uniqValues(creators, "category"), [creators]);
   const languages = useMemo(() => uniqValues(creators, "language"), [creators]);
+  const cities = useMemo(() => uniqValues(creators, "city"), [creators]);
   const platformOptions = useMemo(() => uniqValues(creators, "platform"), [creators]);
   const genderOptions = useMemo(() => uniqValues(creators, "gender"), [creators]);
 
@@ -135,6 +138,9 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
               toggleLang={toggleLang}
               languages={languages}
               langColors={LANG_COLORS}
+              activeCities={activeCities}
+              toggleCity={toggleCity}
+              cities={cities}
               range={range}
               setRange={setRange}
               followerBounds={followerBounds}

@@ -1,7 +1,7 @@
 // Live "linked sheet" sync — lets the user paste a Google Sheet URL once,
 // then hit "Sync now" whenever the sheet has changed to pull the latest
 // rows into the Creators table (adding new creators, updating existing
-// ones matched by phone number).
+// ones matched by platform link).
 //
 // Multi-tab support: when the pasted URL is a normal Google Sheets share
 // link, we fetch the *entire workbook* (every tab, not just one) via the

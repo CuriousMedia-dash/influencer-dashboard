@@ -34,6 +34,10 @@ const HEADER_MAP = {
   language: "language",
   lang: "language",
 
+  city: "city",
+  "creator city": "city",
+  location: "city",
+
   followers: "followers",
   "follower count": "followers",
   "followers count": "followers",
@@ -117,20 +121,12 @@ export function normaliseLink(raw) {
     .replace(/\/+$/, "");
 }
 
-// A creator is matched by name + phone + platform, OR by link + platform
-// — either is enough on its own. This matters because real-world sheets
-// often have messy phone data (two numbers in one cell, a name typed
-// alongside the number, etc.), so relying on phone alone would keep
-// creating duplicate entries for the same person every time their phone
-// field looked slightly different. The link is usually the more stable
-// identifier when that happens.
-export function phoneMatchKey(row) {
-  const phone = normalisePhone(row.phone);
-  if (!phone) return null;
-  const platform = (row.platform || "").trim().toLowerCase();
-  return `phone|${normaliseName(row.name)}|${phone}|${platform}`;
-}
-
+// A creator is matched purely by their platform link — two rows with the
+// same (normalised) profile link on the same platform are the same
+// creator entry, full stop. Name/phone are no longer part of the match:
+// a sheet can update someone's name or phone number and the row is still
+// recognised as the same person, and it never gets fooled into merging
+// two different people who happen to share a phone number.
 export function linkMatchKey(row) {
   const link = normaliseLink(row.profileLink);
   if (!link) return null;
@@ -270,6 +266,7 @@ Found headers: ${headers.join(", ")}`,
       gender: get("gender") || "Others",
       category: get("category") || "Entertainment",
       language: get("language") || "Hindi",
+      city: get("city"),
       followers,
       avgViews: Math.round(followers * 0.08),
       commercial: get("commercial"),
@@ -289,22 +286,29 @@ Found headers: ${headers.join(", ")}`,
 }
 
 /**
- * Build the dedup key for a row: name + phone + platform, normalised.
- * Two rows are considered the "same entry" only when all three match —
- * so the same person on Instagram AND YouTube is correctly kept as 2
- * separate entries, while re-importing the same person+platform twice is
- * caught as a duplicate.
+ * Build the dedup key for a row — the row's platform link, normalised,
+ * is the duplicate constraint: two rows with the same link on the same
+ * platform are the same entry, and re-saving one updates the other in
+ * place rather than creating a new row. The same person on Instagram AND
+ * YouTube still stays as 2 separate entries, since each has its own link.
+ *
+ * A row with no link at all (rare — only possible when a sheet has no
+ * link column for that platform) falls back to name + phone + platform,
+ * just so it still gets a stable, non-colliding key instead of every
+ * linkless row landing on the same key and overwriting each other.
  */
 export function dedupeKey(row) {
+  const link = normaliseLink(row.profileLink);
+  const platform = (row.platform || "").trim().toLowerCase();
+  if (link) return `link|${link}|${platform}`;
   const normPhone = normalisePhone(row.phone);
   const normName = normaliseName(row.name);
-  const platform = (row.platform || "").trim().toLowerCase();
-  return `${normName}|${normPhone}|${platform}`;
+  return `nolink|${normName}|${normPhone}|${platform}`;
 }
 
 /**
  * Merge imported rows into the existing creators array.
- * Dedup rule: skip if name + phone + platform already exists.
+ * Dedup rule: skip if the same platform link already exists.
  * Sort result alphabetically by name (case-insensitive).
  *
  * Returns: { merged: [...creators], added: number, skipped: number }
@@ -320,7 +324,7 @@ export function mergeCreators(existing, incoming) {
   for (const row of incoming) {
     const key = dedupeKey(row);
 
-    // Skip if the same name+phone+platform combo already exists.
+    // Skip if the same platform link already exists.
     if (existingKeys.has(key)) {
       skipped++;
       continue;
@@ -346,13 +350,14 @@ export function mergeCreators(existing, incoming) {
 
 /**
  * Sync imported rows into the existing creators array.
- * Unlike mergeCreators (which always skips duplicate name+phone+platform
- * entries), this matches rows to existing creators by that same key and
- * *updates* the existing record's fields in place when a match is found.
- * Rows with no match are appended as new creators (new platform for an
- * existing person, or a brand new person). Used for the "live sheet link"
- * flow, where the whole point is that edits made in the sheet should flow
- * through.
+ * Unlike mergeCreators (which always skips a duplicate platform link),
+ * this matches rows to existing creators by that same platform link and
+ * *updates* the existing record's fields in place when a match is found
+ * — so a re-uploaded/re-synced row with the same link always overwrites
+ * the old values with whatever's new, rather than creating a second row.
+ * Rows with no match (a link never seen before) are appended as new
+ * creators. Used for the "live sheet link" flow, where the whole point is
+ * that edits made in the sheet should flow through.
  *
  * When `mirror` is true, this treats the sheet as the full source of
  * truth: any existing creator that isn't matched by *any* incoming row is
@@ -363,16 +368,12 @@ export function mergeCreators(existing, incoming) {
  * Returns: { merged: [...creators], added: number, updated: number, removed: number }
  */
 export function syncCreators(existing, incoming, { mirror = false } = {}) {
-  // Two separate lookup indexes — a match on EITHER is enough to treat a
-  // row as the same creator, not just phone alone. This matters because
-  // real-world phone data is often messy (two numbers in one cell, a
-  // name typed next to the number, etc.) — the link is usually the more
-  // reliable identifier when that happens.
-  const phoneIndex = new Map();
+  // Single lookup index, keyed purely by platform link — the only
+  // duplicate constraint now. A row with no link at all can never match
+  // an existing creator, so it's always added as new (see dedupeKey's
+  // fallback for how it still gets a stable key of its own).
   const linkIndex = new Map();
   existing.forEach((c, i) => {
-    const pk = phoneMatchKey(c);
-    if (pk && !phoneIndex.has(pk)) phoneIndex.set(pk, i);
     const lk = linkMatchKey(c);
     if (lk && !linkIndex.has(lk)) linkIndex.set(lk, i);
   });
@@ -385,15 +386,12 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
   let nextId = Date.now();
 
   for (const row of incoming) {
-    const pk = phoneMatchKey(row);
     const lk = linkMatchKey(row);
-    let matchIdx = lk !== null ? linkIndex.get(lk) : undefined;
-    if (matchIdx === undefined && pk !== null) {
-      matchIdx = phoneIndex.get(pk);
-    }
+    const matchIdx = lk !== null ? linkIndex.get(lk) : undefined;
 
     if (matchIdx !== undefined) {
-      // Update existing creator in place, keeping its id.
+      // Same link as an existing row — treat as the same creator and
+      // overwrite its fields with the new values, keeping its id.
       result[matchIdx] = {
         ...result[matchIdx],
         ...row,
@@ -401,10 +399,8 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
       matchedIdx.add(matchIdx);
       updated++;
 
-      // Re-index under the (possibly changed) phone/link, so a later row
-      // in this same batch can still find this creator correctly too.
-      const newPk = phoneMatchKey(result[matchIdx]);
-      if (newPk) phoneIndex.set(newPk, matchIdx);
+      // Re-index under the (possibly changed) link, so a later row in
+      // this same batch can still find this creator correctly too.
       const newLk = linkMatchKey(result[matchIdx]);
       if (newLk) linkIndex.set(newLk, matchIdx);
     } else {
@@ -412,7 +408,6 @@ export function syncCreators(existing, incoming, { mirror = false } = {}) {
       result.push(newCreator);
       const newIdx = result.length - 1;
       matchedIdx.add(newIdx);
-      if (pk) phoneIndex.set(pk, newIdx);
       if (lk) linkIndex.set(lk, newIdx);
       added++;
       addedKeys.push(dedupeKey(row));

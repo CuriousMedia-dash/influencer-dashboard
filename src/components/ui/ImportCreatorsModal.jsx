@@ -84,7 +84,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
       open={open}
       onClose={handleClose}
       title="Upload Creators"
-      description="Export your Google Sheet (or any spreadsheet) as a CSV file and upload it here to add new creators or update existing ones. Rows are matched by name + phone + platform — this can never delete anyone, only add or update."
+      description="Export your Google Sheet (or any spreadsheet) as a CSV file and upload it here to add new creators or update existing ones. Rows are matched by their platform link — this can never delete anyone, only add or update."
       maxWidth={520}
     >
       <div

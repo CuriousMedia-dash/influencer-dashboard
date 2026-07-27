@@ -30,6 +30,7 @@ const CREATOR_FIELD_MAP = {
   gender: "gender",
   category: "category",
   language: "language",
+  city: "city",
   tier: "tier",
   remark: "remark",
   quit: "quit",
@@ -48,6 +49,7 @@ function creatorFromRow(row) {
     gender: row.gender || "",
     category: row.category || "",
     language: row.language || "",
+    city: row.city || "",
     tier: row.tier || "",
     remark: row.remark || "",
     quit: row.quit || false,
@@ -93,7 +95,7 @@ function toCreatorColumns(fields) {
 // overwrites something someone typed in the CRM itself.
 const SHEET_SYNCED_FIELDS = [
   "name", "phone", "email", "platform", "profileLink",
-  "followers", "gender", "category", "language", "tier",
+  "followers", "gender", "category", "language", "city", "tier",
 ];
 
 export function CreatorsProvider({ children }) {
@@ -212,7 +214,7 @@ export function CreatorsProvider({ children }) {
   );
 
   // Pushes the sheet-owned fields for every creator in `rows` into
-  // Supabase, matched by the same name+phone+platform key the sheet sync
+  // Supabase, matched by the same platform-link dedupe key the sheet sync
   // already uses internally. Never touches remark/quit/commercial, so an
   // in-app edit always survives the next sync. `source`, when given, is
   // stamped onto every row in this call — used to tell "came from the
@@ -248,11 +250,11 @@ export function CreatorsProvider({ children }) {
     // Rows still carrying a temporary in-memory id ("sync_..."/"imp_...")
     // are genuinely new — safe to upsert by dedupe_key. Rows with a real
     // database id already exist — those get upserted by that real id
-    // instead. This split matters now that a creator can be matched by
-    // link even when their phone number changed (messy sheet data) — the
-    // dedupe_key string itself would differ from what's stored in that
-    // case, which would otherwise make the database think it's a new row
-    // instead of updating the existing one.
+    // instead. This split matters because dedupe_key is derived from the
+    // platform link — if a creator's link changed since it was last
+    // saved, the freshly-computed dedupe_key here would differ from
+    // what's stored, which would otherwise make the database think it's
+    // a new row instead of updating the existing one.
     const isTempId = (id) => typeof id === "string" && /^(sync|imp)_/.test(id);
 
     // Postgres refuses an entire upsert batch if the same conflict

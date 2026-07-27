@@ -7,6 +7,7 @@ export function useCreatorFilters(creators) {
   const [search, setSearch] = useState("");
   const [activeNiches, setActiveNiches] = useState(() => new Set());
   const [activeLangs, setActiveLangs] = useState(() => new Set());
+  const [activeCities, setActiveCities] = useState(() => new Set());
   const [activePlatforms, setActivePlatforms] = useState(() => new Set());
   const [activeGenders, setActiveGenders] = useState(() => new Set());
   const [activeTiers, setActiveTiers] = useState(() => new Set());
@@ -34,6 +35,15 @@ export function useCreatorFilters(creators) {
 
   const toggleLang = useCallback((val) => {
     setActiveLangs((prev) => {
+      const next = new Set(prev);
+      if (next.has(val)) next.delete(val);
+      else next.add(val);
+      return next;
+    });
+  }, []);
+
+  const toggleCity = useCallback((val) => {
+    setActiveCities((prev) => {
       const next = new Set(prev);
       if (next.has(val)) next.delete(val);
       else next.add(val);
@@ -71,6 +81,7 @@ export function useCreatorFilters(creators) {
   const resetFilters = useCallback(() => {
     setActiveNiches(new Set());
     setActiveLangs(new Set());
+    setActiveCities(new Set());
     setActivePlatforms(new Set());
     setActiveGenders(new Set());
     setActiveTiers(new Set());
@@ -101,6 +112,7 @@ export function useCreatorFilters(creators) {
         (activeGenders.size === 0 || activeGenders.has(r.gender)) &&
         (activeNiches.size === 0 || activeNiches.has(r.category)) &&
         (activeLangs.size === 0 || activeLangs.has(r.language)) &&
+        (activeCities.size === 0 || activeCities.has(r.city)) &&
         inTier(r.followers, activeTiers) &&
         r.followers >= mn &&
         r.followers <= mx &&
@@ -129,6 +141,7 @@ export function useCreatorFilters(creators) {
     activeGenders,
     activeNiches,
     activeLangs,
+    activeCities,
     activeTiers,
     range,
     search,
@@ -141,11 +154,13 @@ export function useCreatorFilters(creators) {
     setSearch,
     activeNiches: activeNiches || EMPTY_SET,
     activeLangs,
+    activeCities,
     activePlatforms,
     activeGenders,
     activeTiers,
     toggleNiche,
     toggleLang,
+    toggleCity,
     togglePlatform,
     toggleGender,
     toggleTier,

@@ -16,6 +16,7 @@ const CSV_COLUMNS = [
   { key: "gender", label: "Gender" },
   { key: "category", label: "Niche" },
   { key: "language", label: "Language" },
+  { key: "city", label: "City" },
   { key: "followers", label: "Followers" },
   { key: "tier", label: "Category" },
   { key: "commercial", label: "Commercial" },
