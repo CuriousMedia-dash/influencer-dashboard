@@ -26,7 +26,7 @@ const COLUMNS = [
   { key: "city", label: "City", sortable: true, width: 100 },
   { key: "tier", label: "Category", sortable: true, width: 90 },
   { key: "phone", label: "Phone", sortable: false, width: 140 },
-  { key: "email", label: "Email", sortable: false, width: 190 },
+  { key: "email", label: "Email", sortable: false, width: 200 },
   { key: "commercial", label: "Commercial", sortable: false, width: 110 },
   { key: "remark", label: "Remarks", sortable: false, width: 230 },
   { key: "actions", label: "", sortable: false, width: 40 },
@@ -232,25 +232,37 @@ export default function CreatorsTable({
                   <TierBadge followers={r.followers} />
                 </td>
 
-                {/* Phone */}
+                {/* Phone (editable) */}
                 <td
-                  className="border-b px-3 py-2 break-words"
+                  className="overflow-visible border-b px-3 py-2"
                   style={{
                     borderColor: "var(--ln)",
                     color: "var(--ink2)",
                     fontFamily: "'JetBrains Mono', monospace",
                   }}
                 >
-                  {r.phone}
+                  <EditableCell
+                    value={r.phone}
+                    label="Phone"
+                    variant="plain"
+                    onSave={(val) => onUpdateField(r.id, "phone", val)}
+                  />
                 </td>
 
-                {/* Email */}
+                {/* Email (editable) */}
                 <td
-                  className="border-b px-3 py-2"
+                  className="overflow-visible border-b px-3 py-2"
                   style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
                 >
                   <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 flex-1 break-words">{r.email}</span>
+                    <div className="min-w-0 flex-1">
+                      <EditableCell
+                        value={r.email}
+                        label="Email"
+                        variant="plain"
+                        onSave={(val) => onUpdateField(r.id, "email", val)}
+                      />
+                    </div>
                     <CopyButton value={r.email} title="Copy email" />
                   </div>
                 </td>

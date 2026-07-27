@@ -109,12 +109,22 @@ export function CreatorsProvider({ children }) {
     creatorsRef.current = creators;
   }, [creators]);
 
+  // Debounced localStorage write — at small row counts JSON.stringify + the
+  // write itself are effectively instant, but at tens of thousands of rows
+  // they become slow, synchronous, main-thread-blocking work. Writing on
+  // every single keystroke/edit would make every click feel laggy, so
+  // instead we wait for edits to settle for a moment before persisting.
   useEffect(() => {
-    try {
-      localStorage.setItem(CREATORS_CACHE_KEY, JSON.stringify(creators));
-    } catch {
-      // Ignore quota/availability errors — in-memory state still works.
-    }
+    const handle = setTimeout(() => {
+      try {
+        localStorage.setItem(CREATORS_CACHE_KEY, JSON.stringify(creators));
+      } catch {
+        // Ignore quota/availability errors (including localStorage's ~5-10MB
+        // cap, which a large dataset can exceed) — in-memory state and the
+        // Supabase-backed data still work fine either way.
+      }
+    }, 800);
+    return () => clearTimeout(handle);
   }, [creators]);
 
   // Loads the real, shared list from Supabase — this is what makes an
