@@ -9,6 +9,64 @@
 
 import { buildPaymentMailto, formatPaymentInfoLines, primaryPlatform } from "./format";
 
+function buildCredentialsPlainTextDraft({ to, password }) {
+  return [
+    `To: ${to}`,
+    "Subject: Your Curious Media dashboard login",
+    "",
+    "Hi,",
+    "",
+    "Your account has been created. You can sign in with:",
+    `Email: ${to}`,
+    `Password: ${password}`,
+    "",
+    "Please sign in and keep these details safe.",
+  ].join("\n");
+}
+
+function buildCredentialsMailto({ to, password }) {
+  const subject = "Your Curious Media dashboard login";
+  const bodyLines = [
+    "Hi,",
+    "",
+    "Your account has been created. You can sign in with:",
+    `Email: ${to}`,
+    `Password: ${password}`,
+    "",
+    "Please sign in and keep these details safe.",
+  ];
+  const toPart = to ? encodeURIComponent(to) : "";
+  const query = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+  return `mailto:${toPart}?${query}`;
+}
+
+/**
+ * Opens the admin's mail app with a pre-filled login-credentials draft
+ * addressed to the newly created user, and copies the same draft to the
+ * clipboard as a fallback (mailto: silently does nothing on a machine
+ * with no default mail app configured). Returns
+ * { clipboardCopied: boolean } so callers can tailor their confirmation
+ * toast.
+ */
+export async function openCredentialsEmail({ to, password }) {
+  const mailto = buildCredentialsMailto({ to, password });
+
+  let clipboardCopied = false;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(buildCredentialsPlainTextDraft({ to, password }));
+      clipboardCopied = true;
+    }
+  } catch {
+    // Clipboard access can be denied (permissions, insecure context, etc.)
+    // — that's fine, the mailto hand-off below still gets attempted.
+  }
+
+  window.location.href = mailto;
+
+  return { clipboardCopied };
+}
+
 function buildPlainTextDraft({ to, creator, campaignName, amount, paymentInfo }) {
   const lines = [
     to ? `To: ${to}` : null,

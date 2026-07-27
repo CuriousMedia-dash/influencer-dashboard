@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { Mail } from "lucide-react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
 import { useAuth } from "../../hooks/useAuth";
 import { getFunctionErrorMessage } from "../../utils/functionError";
 import { logActivity } from "../../utils/activityLog";
+import { openCredentialsEmail } from "../../utils/email";
 
 /**
  * Creates a team member's account directly — admin picks both the email
@@ -16,6 +18,7 @@ export default function CreateUserModal({ open, onClose }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const showToast = useToast();
@@ -58,6 +61,21 @@ export default function CreateUserModal({ open, onClose }) {
       setError(err.message || "Something went wrong.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSendCredentials() {
+    setSendingEmail(true);
+    try {
+      const { clipboardCopied } = await openCredentialsEmail({ to: email.trim(), password });
+      showToast(
+        clipboardCopied
+          ? "Mail app opened with the login details — also copied to your clipboard as backup."
+          : "Mail app opened with the login details.",
+        true
+      );
+    } finally {
+      setSendingEmail(false);
     }
   }
 
@@ -123,7 +141,17 @@ export default function CreateUserModal({ open, onClose }) {
           className="mb-4 rounded-[10px] border p-3 text-xs font-medium"
           style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}
         >
-          Account created. Share the email and password with them directly — they can sign in immediately.
+          <div className="mb-2.5">Account created. Share the email and password with them directly — they can sign in immediately.</div>
+          <button
+            type="button"
+            onClick={handleSendCredentials}
+            disabled={sendingEmail}
+            className="flex items-center gap-1.5 rounded-[7px] border px-3 py-2 text-xs font-semibold disabled:opacity-60"
+            style={{ borderColor: "rgba(43,174,102,.3)", background: "var(--panel)", color: "#2BAE66" }}
+          >
+            <Mail size={13} />
+            {sendingEmail ? "Opening mail app\u2026" : "Send credentials by email"}
+          </button>
         </div>
       )}
 

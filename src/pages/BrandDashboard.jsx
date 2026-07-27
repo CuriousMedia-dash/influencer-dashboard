@@ -618,8 +618,19 @@ function BrandDashboardView({ campaignId, template }) {
   }
 
   // Flat list of every row, always safe to compute (no early return above
-  // this, per React's Rules of Hooks).
-  const rows = useMemo(() => (data && data.rows) || [], [data]);
+  // this, per React's Rules of Hooks). Creators whose execution stage is
+  // "Quit" are held back from the brand's view entirely — the underlying
+  // `data.rows` (used by updateLinkField etc.) is left untouched, only
+  // what's actually rendered here is filtered.
+  //
+  // NOTE: a creator flagged on the agency's Creators table (creator.quit)
+  // should be excluded the same way, but that flag isn't part of what the
+  // get_brand_dashboard RPC currently returns — it needs to be added to
+  // that function's SELECT before it can be filtered out here too.
+  const rows = useMemo(
+    () => ((data && data.rows) || []).filter((r) => r.executionStage !== "Quit"),
+    [data]
+  );
 
   // Grouped into real date sections — newest first — instead of a
   // binary "new" flag that only meant anything relative to whenever

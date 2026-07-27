@@ -1,31 +1,16 @@
-import { useEffect, useState } from "react";
-import { Sun, Moon, LogOut, UserPlus, ScrollText } from "lucide-react";
-import { useCreators } from "../../hooks/useCreators";
+import { useState } from "react";
+import { Sun, Moon, LogOut, UserPlus, ScrollText, Upload } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../hooks/useAuth";
-import { timeAgo } from "../../utils/format";
 import InviteBrandModal from "../ui/InviteBrandModal";
 import UserAvatar from "../ui/UserAvatar";
 import ActivityLogModal from "../ui/ActivityLogModal";
 
-function statusDotColor(syncStatus) {
-  return syncStatus === "synced" ? "#2BAE66" : "var(--ink3)";
-}
-
 export default function Header({ onGearClick }) {
-  const { syncStatus, sheetLink } = useCreators();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut, isAdmin } = useAuth();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activityLogOpen, setActivityLogOpen] = useState(false);
-  // Re-render every 30s so "Synced N minutes ago" stays roughly current.
-  const [, forceTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => forceTick((n) => n + 1), 30000);
-    return () => clearInterval(t);
-  }, []);
-
-  const color = statusDotColor(syncStatus);
 
   return (
     <header
@@ -60,21 +45,6 @@ export default function Header({ onGearClick }) {
 
         <div className="flex flex-col items-end gap-3">
         <div className="flex items-center gap-2">
-          <div
-            title={
-              sheetLink?.url
-                ? `${sheetLink.url}${syncStatus === "synced" && sheetLink.lastSyncedAt ? " — synced " + timeAgo(sheetLink.lastSyncedAt) : ""}`
-                : "No Google Sheet linked yet — click the gear to connect one"
-            }
-            className="flex h-[30px] w-[30px] items-center justify-center rounded-full border shadow-[0_1px_2px_rgba(16,36,62,.04)]"
-            style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
-          >
-            <span
-              className={"h-2 w-2 rounded-full" + (syncStatus === "syncing" ? " animate-pulse" : "")}
-              style={{ background: color }}
-            />
-          </div>
-
           <button
             type="button"
             onClick={toggleTheme}
@@ -97,8 +67,8 @@ export default function Header({ onGearClick }) {
           <button
             type="button"
             onClick={onGearClick}
-            title="Import creators / manage linked Google Sheet"
-            aria-label="Import creators / manage linked Google Sheet"
+            title="Upload creators (CSV)"
+            aria-label="Upload creators (CSV)"
             className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
             style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
             onMouseEnter={(e) => {
@@ -110,7 +80,7 @@ export default function Header({ onGearClick }) {
               e.currentTarget.style.color = "var(--ink2)";
             }}
           >
-            ⚙
+            <Upload size={15} />
           </button>
 
           {isAdmin && (

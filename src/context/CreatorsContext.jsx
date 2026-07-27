@@ -2,7 +2,6 @@ import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { CreatorsContext } from "./creatorsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
-import { syncFromSheetUrl } from "../utils/sheetSync";
 import { dedupeKey } from "../utils/csvImport";
 import { logActivity } from "../utils/activityLog";
 
@@ -10,15 +9,6 @@ import { logActivity } from "../utils/activityLog";
 // immediately instead of a blank table while Supabase loads. Supabase is
 // the real, shared source of truth now — this is purely a fast-paint cache.
 const CREATORS_CACHE_KEY = "cm_creators_cache";
-
-// The master sheet link used to live per-browser in localStorage — every
-// admin had to link their own copy, and nobody else ever saw it. It now
-// lives in the shared `app_settings` table (key = "master_sheet"), so
-// every teammate automatically syncs from the exact same sheet, and only
-// admins can change which sheet that is (enforced by RLS on that table,
-// not just by hiding buttons here).
-const MASTER_SHEET_KEY = "master_sheet";
-
 
 function loadCachedCreators() {
   try {
@@ -112,18 +102,7 @@ export function CreatorsProvider({ children }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
 
-  const [sheetLink, setSheetLink] = useState(null);
-  const [syncStatus, setSyncStatus] = useState("not_connected");
-  const [syncError, setSyncError] = useState("");
-
-  // Separate status for the one-time "add creators from another sheet"
-  // import — kept apart from the master sheet's syncStatus so importing
-  // doesn't make the header pill think the master sheet is mid-sync.
-  const [importStatus, setImportStatus] = useState("idle");
-  const [importError, setImportError] = useState("");
-
   const creatorsRef = useRef(creators);
-  const syncingRef = useRef(false);
   useEffect(() => {
     creatorsRef.current = creators;
   }, [creators]);
@@ -147,31 +126,13 @@ export function CreatorsProvider({ children }) {
     setCreators((data || []).map(creatorFromRow));
   }, []);
 
-  // Loads the shared master sheet link/settings — any authenticated
-  // teammate can read this (needed so everyone's background sync works),
-  // only admins can change it.
-  const loadMasterSheet = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", MASTER_SHEET_KEY)
-      .maybeSingle();
-    if (error) {
-      console.error("Failed to load master sheet link:", error.message);
-      return;
-    }
-    const value = data?.value || null;
-    setSheetLink(value);
-    setSyncStatus(value?.url ? "idle" : "not_connected");
-  }, []);
-
   useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
-    Promise.all([loadFromSupabase(), loadMasterSheet()]).finally(() => setLoading(false));
-  }, [user, loadFromSupabase, loadMasterSheet]);
+    loadFromSupabase().finally(() => setLoading(false));
+  }, [user, loadFromSupabase]);
 
   const updateCreatorField = useCallback((id, field, value) => {
     setCreators((prev) =>
@@ -349,104 +310,7 @@ export function CreatorsProvider({ children }) {
     }
   }, []);
 
-  // Single entry point for pulling from the MASTER sheet — used for the
-  // very first sync when the app opens, the silent background refresh,
-  // and the manual "Connect & sync" / "Sync now" / "Change link" actions.
-  // Also updates the shared master-sheet setting (admin-only, enforced by
-  // RLS — a non-admin's write here is silently rejected by the database).
-  const syncNow = useCallback(
-    async (rawUrl, { mirror = false } = {}) => {
-      setSyncStatus("syncing");
-      try {
-        const beforeSync = creatorsRef.current;
-        const { merged, added, updated, removed, addedKeys, rowErrors } = await syncFromSheetUrl(
-          rawUrl,
-          beforeSync,
-          { mirror }
-        );
-        // Every row here is sheet-sourced, whether brand new or an
-        // update to something that already existed. Commercial only
-        // comes along for the genuinely new ones.
-        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
-
-        // Mirror mode's actual deletion happens here — and only for
-        // creators whose source is genuinely "sheet". A creator added
-        // through CSV upload can never be removed by this, even if it's
-        // not present in the sheet, because it was never sheet-sourced
-        // to begin with.
-        if (mirror) {
-          const mergedIds = new Set(merged.map((c) => c.id));
-          const removedIds = beforeSync.filter((c) => !mergedIds.has(c.id)).map((c) => c.id);
-          if (removedIds.length > 0) {
-            const { error: deleteError } = await supabase
-              .from("creators")
-              .delete()
-              .in("id", removedIds)
-              .eq("source", "sheet");
-            if (deleteError) {
-              console.error("Failed to remove creators no longer in the sheet:", deleteError.message);
-            }
-          }
-        }
-
-        // Re-load from Supabase so every row carries its real database id
-        // and whatever remark/quit/commercial already existed for it,
-        // instead of trusting the local merge's temporary ids.
-        await loadFromSupabase();
-
-        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
-        const { error: settingsError } = await supabase.from("app_settings").upsert(
-          { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
-          { onConflict: "key" }
-        );
-        if (settingsError) {
-          console.error("Failed to save master sheet link:", settingsError.message);
-        } else {
-          setSheetLink(record);
-        }
-
-        setSyncStatus("synced");
-        setSyncError("");
-        logActivity(user, "sheet_synced", { added, updated, removed: mirror ? removed : 0 });
-        return { added, updated, removed, rowErrors };
-      } catch (err) {
-        setSyncStatus("error");
-        setSyncError(err?.message || "Something went wrong while syncing.");
-        throw err;
-      }
-    },
-    [pushBaseFieldsToSupabase, loadFromSupabase, user]
-  );
-
-  // One-time "add creators from another sheet" — merges whatever's in the
-  // given sheet into the same shared creators list, but never touches the
-  // master sheet setting above. Doesn't affect what the background sync
-  // keeps pulling from. Never removes anything (mirror is always off
-  // here), so there's no deletion step needed.
-  const importFromSheet = useCallback(
-    async (rawUrl) => {
-      setImportStatus("importing");
-      setImportError("");
-      try {
-        const { merged, added, updated, addedKeys, rowErrors } = await syncFromSheetUrl(
-          rawUrl,
-          creatorsRef.current,
-          { mirror: false }
-        );
-        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
-        await loadFromSupabase();
-        setImportStatus("done");
-        return { added, updated, rowErrors };
-      } catch (err) {
-        setImportStatus("error");
-        setImportError(err?.message || "Something went wrong while importing.");
-        throw err;
-      }
-    },
-    [pushBaseFieldsToSupabase, loadFromSupabase]
-  );
-
-  // Confirms a local file upload (CSV or Excel) by actually saving it to
+  // Confirms a local file upload (CSV) by actually saving it to
   // Supabase — the base fields only, same as a sheet sync would, so any
   // in-app edits (remark/quit/commercial) on existing creators are left
   // alone. `addedKeys` (the dedupe keys of rows that are genuinely new,
@@ -470,65 +334,6 @@ export function CreatorsProvider({ children }) {
     [pushBaseFieldsToSupabase, loadFromSupabase, user]
   );
 
-  const unlinkSheet = useCallback(async () => {
-    const { error } = await supabase.from("app_settings").delete().eq("key", MASTER_SHEET_KEY);
-    if (error) {
-      console.error("Failed to unlink master sheet:", error.message);
-      return;
-    }
-    setSheetLink(null);
-    setSyncStatus("not_connected");
-    setSyncError("");
-  }, []);
-
-  const setSheetMirror = useCallback(
-    async (mirror) => {
-      if (!sheetLink?.url) return;
-      const record = { ...sheetLink, mirror };
-      const { error } = await supabase.from("app_settings").upsert(
-        { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
-        { onConflict: "key" }
-      );
-      if (error) {
-        console.error("Failed to update mirror setting:", error.message);
-        return;
-      }
-      setSheetLink(record);
-    },
-    [sheetLink, user]
-  );
-
-  // The moment the app opens (and someone's logged in): if the shared
-  // master sheet is linked, sync once — and only once per app session,
-  // not repeatedly. From then on, syncing only happens when someone
-  // explicitly clicks "Sync now". This also fixes a real bug the old
-  // repeating version had: if a background sync was still in flight with
-  // the *old* link right as someone connected a genuinely new one, the
-  // old sync could finish last and silently overwrite the new link back
-  // to the old one. A single one-time sync removes that race entirely.
-  const didInitialSyncRef = useRef(false);
-  useEffect(() => {
-    if (!user || !sheetLink?.url) return;
-    if (didInitialSyncRef.current) return;
-    didInitialSyncRef.current = true;
-
-    async function initialSync() {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      try {
-        await syncNow(sheetLink.url, { mirror: Boolean(sheetLink.mirror) });
-      } catch {
-        // Swallowed on purpose — a brief network hiccup shouldn't
-        // interrupt the user. The status pill already reflects the error.
-      } finally {
-        syncingRef.current = false;
-      }
-    }
-
-    initialSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, sheetLink?.url]);
-
   const value = useMemo(
     () => ({
       creators,
@@ -544,15 +349,6 @@ export function CreatorsProvider({ children }) {
       clearSelection,
       selectedCreators,
       getCreatorById,
-      sheetLink,
-      syncStatus,
-      syncError,
-      syncNow,
-      unlinkSheet,
-      setSheetMirror,
-      importFromSheet,
-      importStatus,
-      importError,
       isAdmin,
     }),
     [
@@ -568,15 +364,6 @@ export function CreatorsProvider({ children }) {
       clearSelection,
       selectedCreators,
       getCreatorById,
-      sheetLink,
-      syncStatus,
-      syncError,
-      syncNow,
-      unlinkSheet,
-      setSheetMirror,
-      importFromSheet,
-      importStatus,
-      importError,
       isAdmin,
     ]
   );

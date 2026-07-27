@@ -47,7 +47,18 @@ function fromUrlSafe(safe) {
  * status, execution stage, live video link, viewership).
  */
 export function buildShareToken(campaign, getCreatorById) {
-  const rows = campaign.creatorLinks.map((link) => {
+  const rows = campaign.creatorLinks
+    // A creator whose execution stage is "Quit", or who's flagged
+    // (creator.quit) on the Creators table, should never be forwarded to
+    // the brand — they're excluded from the snapshot entirely rather
+    // than shown with a "quit" label.
+    .filter((link) => {
+      if (link.executionStage === "Quit") return false;
+      const creator = getCreatorById(link.creatorId);
+      if (creator?.quit) return false;
+      return true;
+    })
+    .map((link) => {
     const creator = getCreatorById(link.creatorId);
     return {
       creatorId: link.creatorId,
