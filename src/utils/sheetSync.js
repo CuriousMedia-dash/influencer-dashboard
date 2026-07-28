@@ -215,10 +215,24 @@ export async function fetchSheetAllTabsCsv(rawUrl) {
     throw new Error("The sheet loaded but has no tabs with data.");
   }
 
-  return workbook.SheetNames.map((sheetName) => ({
-    sheetName,
-    csv: XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]),
-  }));
+  try {
+    return workbook.SheetNames.map((sheetName) => {
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) {
+        throw new Error(`Tab "${sheetName}" couldn't be read.`);
+      }
+      return {
+        sheetName,
+        csv: XLSX.utils.sheet_to_csv(worksheet),
+      };
+    });
+  } catch (err) {
+    throw new Error(
+      `Couldn't convert the sheet's tabs to readable data (${err?.message || "unknown reason"}). ` +
+        `This can happen if the "xlsx" library isn't installed correctly in this project — run ` +
+        `"npm install xlsx" and redeploy if this keeps happening.`
+    );
+  }
 }
 
 /**
