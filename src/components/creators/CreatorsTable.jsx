@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ChevronUp, ChevronDown, Trash2, Flag } from "lucide-react";
 import Badge from "../ui/Badge";
 import TierBadge from "../ui/TierBadge";
@@ -32,7 +33,7 @@ const COLUMNS = [
   { key: "actions", label: "", sortable: false, width: 40 },
 ];
 
-export default function CreatorsTable({
+function CreatorsTable({
   rows,
   selectedIds,
   onToggleSelect,
@@ -348,3 +349,5 @@ export default function CreatorsTable({
     </div>
   );
 }
+
+export default memo(CreatorsTable);

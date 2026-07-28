@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { UserPlus } from "lucide-react";
 import TabBar from "../components/layout/TabBar";
 import FilterSidebar from "../components/creators/FilterSidebar";
@@ -66,6 +66,24 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
   const genderOptions = useMemo(() => uniqValues(creators, "gender"), [creators]);
 
   const totalSelected = selectedIds.size;
+
+  // Stable reference — without this, the whole (several-hundred-row)
+  // table would re-render on every single render of this component,
+  // even ones that have nothing to do with the table at all (opening
+  // an unrelated modal, toggling dark mode via a sibling component
+  // that shares a re-render boundary with this one, etc.).
+  const handleDeleteRow = useCallback((id, name) => {
+    setPendingDelete({ ids: [id], label: name });
+  }, []);
+
+  const handleOpenMoveModal = useCallback(() => setMoveModalOpen(true), []);
+
+  const handleDeleteSelected = useCallback(() => {
+    setPendingDelete({
+      ids: Array.from(selectedIds),
+      label: `${selectedIds.size} selected creator${selectedIds.size === 1 ? "" : "s"}`,
+    });
+  }, [selectedIds]);
 
   return (
     <div>
@@ -150,17 +168,9 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
             <main className="min-w-0">
               <SelectionToolbar
                 count={totalSelected}
-                onMoveToCampaign={() => setMoveModalOpen(true)}
+                onMoveToCampaign={handleOpenMoveModal}
                 onClearSelection={clearSelection}
-                onDeleteSelected={
-                  isAdmin
-                    ? () =>
-                        setPendingDelete({
-                          ids: Array.from(selectedIds),
-                          label: `${totalSelected} selected creator${totalSelected === 1 ? "" : "s"}`,
-                        })
-                    : undefined
-                }
+                onDeleteSelected={isAdmin ? handleDeleteSelected : undefined}
               />
 
               <CreatorsTable
@@ -172,7 +182,7 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
                 sortDir={sortDir}
                 onSort={sortBy}
                 onUpdateField={updateCreatorField}
-                onDeleteRow={(id, name) => setPendingDelete({ ids: [id], label: name })}
+                onDeleteRow={handleDeleteRow}
                 isAdmin={isAdmin}
               />
             </main>
