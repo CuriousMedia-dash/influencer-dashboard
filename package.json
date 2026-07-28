@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.110.1",
     "@tailwindcss/vite": "^4.3.1",
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.8",
     "clsx": "^2.1.1",
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
