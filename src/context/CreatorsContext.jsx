@@ -4,6 +4,9 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
 import { dedupeKey } from "../utils/csvImport";
 import { logActivity } from "../utils/activityLog";
+import { syncFromSheetUrl } from "../utils/sheetSync";
+
+const MASTER_SHEET_KEY = "master_sheet";
 
 // Local cache of the creators list, so a reload shows the last-known data
 // immediately instead of a blank table while Supabase loads. Supabase is
@@ -103,6 +106,10 @@ export function CreatorsProvider({ children }) {
   const [creators, setCreators] = useState(() => loadCachedCreators());
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
+  const [sheetLink, setSheetLink] = useState(null);
+  const [syncStatus, setSyncStatus] = useState("not_connected");
+  const [syncError, setSyncError] = useState("");
+  const syncingRef = useRef(false);
 
   const creatorsRef = useRef(creators);
   useEffect(() => {
@@ -145,6 +152,36 @@ export function CreatorsProvider({ children }) {
     }
     loadFromSupabase().finally(() => setLoading(false));
   }, [user, loadFromSupabase]);
+
+  // Google Sheet syncing — entirely an admin capability. Non-admins never
+  // see the linked sheet, never trigger a sync, and this effect doesn't
+  // even run for them — they only ever see whatever's already in the
+  // shared database from an admin's sync.
+  useEffect(() => {
+    if (!user || !isAdmin) return;
+    let cancelled = false;
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", MASTER_SHEET_KEY)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load master sheet link:", error.message);
+          return;
+        }
+        if (data?.value) {
+          setSheetLink(data.value);
+          setSyncStatus("synced");
+        } else {
+          setSyncStatus("not_connected");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isAdmin]);
 
   const updateCreatorField = useCallback((id, field, value) => {
     setCreators((prev) =>
@@ -346,6 +383,122 @@ export function CreatorsProvider({ children }) {
     [pushBaseFieldsToSupabase, loadFromSupabase, user]
   );
 
+  // Admin-only Google Sheet sync — pulls every tab of the linked sheet,
+  // matches by platform link (same rule CSV upload uses), and only ever
+  // pushes the sheet-owned base fields, never touching remark/quit/
+  // commercial. Mirror mode (admin-only, opt-in) additionally removes
+  // creators that came from the sheet and are no longer present in it —
+  // scoped to sheet-sourced creators specifically, so a CSV upload can
+  // never be wiped out by a sheet sync.
+  const syncNow = useCallback(
+    async (rawUrl, { mirror = false } = {}) => {
+      if (!isAdmin) return;
+      setSyncStatus("syncing");
+      try {
+        const beforeSync = creatorsRef.current;
+        const { merged, added, updated, removed, addedKeys, rowErrors } = await syncFromSheetUrl(
+          rawUrl,
+          beforeSync,
+          { mirror }
+        );
+        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
+
+        if (mirror) {
+          const mergedIds = new Set(merged.map((c) => c.id));
+          const removedIds = beforeSync.filter((c) => !mergedIds.has(c.id)).map((c) => c.id);
+          if (removedIds.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("creators")
+              .delete()
+              .in("id", removedIds)
+              .eq("source", "sheet");
+            if (deleteError) {
+              console.error("Failed to remove creators no longer in the sheet:", deleteError.message);
+            }
+          }
+        }
+
+        await loadFromSupabase();
+
+        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
+        const { error: settingsError } = await supabase.from("app_settings").upsert(
+          { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
+          { onConflict: "key" }
+        );
+        if (settingsError) {
+          console.error("Failed to save master sheet link:", settingsError.message);
+        } else {
+          setSheetLink(record);
+        }
+
+        setSyncStatus("synced");
+        setSyncError("");
+        logActivity(user, "sheet_synced", { added, updated, removed: mirror ? removed : 0 });
+        return { added, updated, removed, rowErrors };
+      } catch (err) {
+        setSyncStatus("error");
+        setSyncError(err?.message || "Something went wrong while syncing.");
+        throw err;
+      }
+    },
+    [isAdmin, pushBaseFieldsToSupabase, loadFromSupabase, user]
+  );
+
+  const unlinkSheet = useCallback(async () => {
+    if (!isAdmin) return;
+    const { error } = await supabase.from("app_settings").delete().eq("key", MASTER_SHEET_KEY);
+    if (error) {
+      console.error("Failed to unlink master sheet:", error.message);
+      return;
+    }
+    setSheetLink(null);
+    setSyncStatus("not_connected");
+  }, [isAdmin]);
+
+  const setSheetMirror = useCallback(
+    async (mirror) => {
+      if (!isAdmin || !sheetLink?.url) return;
+      const record = { ...sheetLink, mirror };
+      const { error } = await supabase.from("app_settings").upsert(
+        { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
+        { onConflict: "key" }
+      );
+      if (error) {
+        console.error("Failed to update mirror setting:", error.message);
+        return;
+      }
+      setSheetLink(record);
+    },
+    [isAdmin, sheetLink, user]
+  );
+
+  // The moment the app opens, for an admin only: if the shared master
+  // sheet is linked, sync once — and only once per session, not
+  // repeatedly. From then on, syncing only happens when an admin
+  // explicitly clicks "Sync now".
+  const didInitialSyncRef = useRef(false);
+  useEffect(() => {
+    if (!user || !isAdmin || !sheetLink?.url) return;
+    if (didInitialSyncRef.current) return;
+    didInitialSyncRef.current = true;
+
+    async function initialSync() {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      try {
+        await syncNow(sheetLink.url, { mirror: Boolean(sheetLink.mirror) });
+      } catch {
+        // Swallowed on purpose — a brief network hiccup shouldn't
+        // interrupt the user. The status pill already reflects the error.
+      } finally {
+        syncingRef.current = false;
+      }
+    }
+
+    initialSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isAdmin, sheetLink?.url]);
+
   const value = useMemo(
     () => ({
       creators,
@@ -362,6 +515,12 @@ export function CreatorsProvider({ children }) {
       selectedCreators,
       getCreatorById,
       isAdmin,
+      sheetLink,
+      syncStatus,
+      syncError,
+      syncNow,
+      unlinkSheet,
+      setSheetMirror,
     }),
     [
       creators,
@@ -377,6 +536,12 @@ export function CreatorsProvider({ children }) {
       selectedCreators,
       getCreatorById,
       isAdmin,
+      sheetLink,
+      syncStatus,
+      syncError,
+      syncNow,
+      unlinkSheet,
+      setSheetMirror,
     ]
   );
 
