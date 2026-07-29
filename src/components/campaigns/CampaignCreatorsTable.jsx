@@ -10,6 +10,7 @@ import PaymentInfoDialog from "./PaymentInfoDialog";
 import { fmt, hex2rgba, groupByPlatform, parseN, summarizePaymentInfo, toHref } from "../../utils/format";
 import { openPaymentEmail } from "../../utils/email";
 import { useToast } from "../../hooks/useToast";
+import { useAuth } from "../../hooks/useAuth";
 import {
   LANG_COLORS,
   NEGOTIATION_STATUSES,
@@ -153,6 +154,7 @@ export default function CampaignCreatorsTable({
   const [lockDialogCreatorId, setLockDialogCreatorId] = useState(null);
   const [paymentDialogCreatorId, setPaymentDialogCreatorId] = useState(null);
   const showToast = useToast();
+  const { isAdmin } = useAuth();
 
   // Flatten to one row per platform per creator (reusing the existing
   // grouping helper just for its flattening behavior), then drop the
@@ -550,9 +552,16 @@ export default function CampaignCreatorsTable({
                         />
                         <button
                           type="button"
-                          onClick={() => onUpdateLink(link.creatorId, { advancePaid: !link.advancePaid })}
-                          title={link.advancePaid ? "Mark advance as unpaid" : "Mark advance as paid"}
-                          className="flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] transition-colors"
+                          onClick={() => isAdmin && onUpdateLink(link.creatorId, { advancePaid: !link.advancePaid })}
+                          disabled={!isAdmin}
+                          title={
+                            !isAdmin
+                              ? "Only admins can change payment status"
+                              : link.advancePaid
+                              ? "Mark advance as unpaid"
+                              : "Mark advance as paid"
+                          }
+                          className="flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                           style={
                             link.advancePaid
                               ? { borderColor: "#2BAE66", background: "rgba(43,174,102,.1)", color: "#2BAE66" }
@@ -587,9 +596,16 @@ export default function CampaignCreatorsTable({
                         />
                         <button
                           type="button"
-                          onClick={() => onUpdateLink(link.creatorId, { fullPaid: !link.fullPaid })}
-                          title={link.fullPaid ? "Mark full payment as unpaid" : "Mark full payment as paid"}
-                          className="flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] transition-colors"
+                          onClick={() => isAdmin && onUpdateLink(link.creatorId, { fullPaid: !link.fullPaid })}
+                          disabled={!isAdmin}
+                          title={
+                            !isAdmin
+                              ? "Only admins can change payment status"
+                              : link.fullPaid
+                              ? "Mark full payment as unpaid"
+                              : "Mark full payment as paid"
+                          }
+                          className="flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                           style={
                             link.fullPaid
                               ? { borderColor: "#2BAE66", background: "rgba(43,174,102,.1)", color: "#2BAE66" }
