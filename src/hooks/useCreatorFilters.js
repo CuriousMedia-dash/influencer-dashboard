@@ -1,10 +1,25 @@
-import { useMemo, useState, useCallback } from "react";
-import { inTier, platformNames } from "../utils/format";
+import { useMemo, useState, useCallback, useEffect } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 const EMPTY_SET = new Set();
 
-export function useCreatorFilters(creators) {
+/**
+ * Owns all Creators-page filter/sort UI state. No longer takes or
+ * filters a `creators` array — filtering now happens server-side (see
+ * usePaginatedCreators + utils/creatorsQuery). This hook only tracks
+ * *which* filters are active and exposes them as a single `filterState`
+ * object the data-fetching hook can turn into a query.
+ */
+export function useCreatorFilters() {
   const [search, setSearch] = useState("");
+  // The input echoes `search` instantly — the debounced value is what
+  // actually triggers a new server query, ~200ms after typing pauses.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   const [activeNiches, setActiveNiches] = useState(() => new Set());
   const [activeLangs, setActiveLangs] = useState(() => new Set());
   const [activeCities, setActiveCities] = useState(() => new Set());
@@ -14,15 +29,48 @@ export function useCreatorFilters(creators) {
   const [sortKey, setSortKey] = useState("followers");
   const [sortDir, setSortDir] = useState(-1);
 
-  const followerBounds = useMemo(() => {
-    const vs = creators.map((r) => r.followers);
-    let min = vs.length ? Math.min(...vs) : 0;
-    let max = vs.length ? Math.max(...vs) : 1000000;
-    if (max === min) max = min + 1000;
-    return [min, max];
-  }, [creators]);
+  // Follower min/max across the whole table (for the range slider's
+  // bounds) and the list of distinct cities in use — both come from a
+  // couple of small RPC calls instead of scanning every row client-side.
+  // Fetched once on mount; a brand-new city typed into a creator's row
+  // won't appear in the filter list until the next reload, which is an
+  // acceptable trade-off for not re-scanning 50,000+ rows on every visit.
+  const [followerBounds, setFollowerBounds] = useState([0, 1000000]);
+  const [range, setRange] = useState([0, 1000000]);
+  const [cities, setCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(true);
 
-  const [range, setRange] = useState(followerBounds);
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .rpc("creators_followers_bounds")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load follower bounds:", error.message);
+          return;
+        }
+        const row = Array.isArray(data) ? data[0] : data;
+        const bounds = [Number(row?.min_followers) || 0, Number(row?.max_followers) || 1000000];
+        setFollowerBounds(bounds);
+        setRange(bounds);
+      });
+    supabase
+      .rpc("distinct_cities")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to load cities:", error.message);
+          setCitiesLoading(false);
+          return;
+        }
+        setCities((data || []).map((r) => r.city).filter(Boolean));
+        setCitiesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleNiche = useCallback((val) => {
     setActiveNiches((prev) => {
@@ -101,53 +149,21 @@ export function useCreatorFilters(creators) {
     [sortKey]
   );
 
-  const filtered = useMemo(() => {
-    const [mn, mx] = range;
-    const lowerSearch = search.trim().toLowerCase();
-    const result = creators.filter(
-      (r) =>
-        !r.deletedAt &&
-        (activePlatforms.size === 0 ||
-          platformNames(r).some((p) => activePlatforms.has(p))) &&
-        (activeGenders.size === 0 || activeGenders.has(r.gender)) &&
-        (activeNiches.size === 0 || activeNiches.has(r.category)) &&
-        (activeLangs.size === 0 || activeLangs.has(r.language)) &&
-        (activeCities.size === 0 || activeCities.has(r.city)) &&
-        inTier(r.followers, activeTiers) &&
-        r.followers >= mn &&
-        r.followers <= mx &&
-        (lowerSearch === "" || r.name.toLowerCase().includes(lowerSearch))
-    );
-
-    result.sort((a, b) => {
-      let av = a[sortKey];
-      let bv = b[sortKey];
-      if (sortKey === "tier") {
-        av = a.followers;
-        bv = b.followers;
-      }
-      if (sortKey === "platforms") {
-        av = platformNames(a).join(", ");
-        bv = platformNames(b).join(", ");
-      }
-      if (typeof av === "number") return (av - bv) * sortDir;
-      return String(av).localeCompare(String(bv)) * sortDir;
-    });
-
-    return result;
-  }, [
-    creators,
-    activePlatforms,
-    activeGenders,
-    activeNiches,
-    activeLangs,
-    activeCities,
-    activeTiers,
-    range,
-    search,
-    sortKey,
-    sortDir,
-  ]);
+  // The shape the data-fetching hook (usePaginatedCreators) and the
+  // "select all matching filters" action both consume.
+  const filterState = useMemo(
+    () => ({
+      activeNiches,
+      activeLangs,
+      activeCities,
+      activePlatforms,
+      activeGenders,
+      activeTiers,
+      range,
+      debouncedSearch,
+    }),
+    [activeNiches, activeLangs, activeCities, activePlatforms, activeGenders, activeTiers, range, debouncedSearch]
+  );
 
   return {
     search,
@@ -171,6 +187,8 @@ export function useCreatorFilters(creators) {
     sortKey,
     sortDir,
     sortBy,
-    filtered,
+    cities,
+    citiesLoading,
+    filterState,
   };
 }

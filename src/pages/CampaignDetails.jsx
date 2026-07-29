@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, Navigate, useNavigate } from "react-router-dom";
 import { ArrowLeft, Share2, Trash2, Download } from "lucide-react";
 import CampaignOverview from "../components/campaigns/CampaignOverview";
@@ -20,13 +20,24 @@ export default function CampaignDetails() {
     updateCreatorLink,
     removeCreatorFromCampaign,
   } = useCampaigns();
-  const { getCreatorById, updateCreatorField } = useCreators();
+  const { getCreatorById, updateCreatorField, ensureCreatorsLoaded } = useCreators();
   const showToast = useToast();
 
   const [shareOpen, setShareOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const campaign = getCampaignById(id);
+
+  // A campaign can reference creators who aren't on whatever page of the
+  // main Creators table happens to be loaded (or loaded at all, since
+  // that table is now paginated) — fetch whichever of this campaign's
+  // creators aren't already known about yet, so their name/details still
+  // resolve correctly here.
+  useEffect(() => {
+    if (campaign?.creatorLinks?.length) {
+      ensureCreatorsLoaded(campaign.creatorLinks.map((l) => l.creatorId));
+    }
+  }, [campaign?.creatorLinks, ensureCreatorsLoaded]);
 
   if (!campaign) {
     return <Navigate to="/" replace />;

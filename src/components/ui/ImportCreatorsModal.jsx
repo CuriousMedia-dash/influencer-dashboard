@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Upload, FileText, AlertCircle, CheckCircle2, Link2, RefreshCw, Unlink } from "lucide-react";
 import Modal from "../ui/Modal";
-import { parseCsvImport, syncCreators } from "../../utils/csvImport";
+import { parseCsvImport } from "../../utils/csvImport";
 import { useCreators } from "../../hooks/useCreators";
 import { useToast } from "../../hooks/useToast";
 
@@ -28,8 +28,8 @@ function TabButton({ active, onClick, icon, label }) {
 
 export default function ImportCreatorsModal({ open, onClose }) {
   const {
-    creators,
     confirmLocalImport,
+    previewCsvImport,
     sheetLink,
     syncStatus,
     syncNow,
@@ -50,6 +50,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
   const [fileName, setFileName] = useState("");
   const [errors, setErrors] = useState([]);
   const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   // ── Master sheet (Link) tab state — admin only ──
@@ -76,9 +77,22 @@ export default function ImportCreatorsModal({ open, onClose }) {
   // CSV uploads are always add/update only — never delete. This keeps a
   // stray or partial CSV from ever accidentally wiping anyone out; to
   // remove creators, use the delete action in the creators table instead.
-  function buildPreview(rows) {
-    const { merged, added, updated, addedKeys } = syncCreators(creators, rows, { mirror: false });
-    setPreview({ merged, added, updated, addedKeys });
+  //
+  // Checks which rows already exist via a targeted database lookup (by
+  // dedupe key) rather than comparing against a full local creators
+  // list — this is what keeps upload working the same way whether the
+  // table has 200 creators or 50,000+.
+  async function buildPreview(rows) {
+    setPreviewing(true);
+    try {
+      const { merged, added, updated, addedKeys } = await previewCsvImport(rows);
+      setPreview({ merged, added, updated, addedKeys });
+    } catch (err) {
+      setErrors([{ message: `Couldn't check for duplicates: ${err.message || "unknown error"}` }]);
+      setStage(STAGES.ERRORS);
+    } finally {
+      setPreviewing(false);
+    }
   }
 
   async function handleFileChange(e) {
@@ -106,7 +120,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
       return;
     }
 
-    buildPreview(rows);
+    await buildPreview(rows);
     setStage(STAGES.PREVIEW);
   }
 
@@ -259,6 +273,15 @@ export default function ImportCreatorsModal({ open, onClose }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {previewing && (
+            <div
+              className="mb-4 flex items-center gap-2 rounded-[10px] border p-3.5 text-xs"
+              style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
+            >
+              Checking for existing creators…
             </div>
           )}
 

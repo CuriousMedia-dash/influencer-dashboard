@@ -1,97 +1,19 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { CreatorsContext } from "./creatorsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
-import { dedupeKey } from "../utils/csvImport";
+import { dedupeKey, syncCreators, parseCsvImport } from "../utils/csvImport";
 import { logActivity } from "../utils/activityLog";
-import { syncFromSheetUrl } from "../utils/sheetSync";
+import {
+  syncFromSheetUrl,
+  fetchSheetAllTabsCsv,
+  fetchSheetCsv,
+  isGoogleSheetsShareUrl,
+  normaliseSheetUrl,
+} from "../utils/sheetSync";
+import { creatorFromRow, toCreatorColumns } from "../utils/creatorRow";
 
 const MASTER_SHEET_KEY = "master_sheet";
-
-// Local cache of the creators list, so a reload shows the last-known data
-// immediately instead of a blank table while Supabase loads. Supabase is
-// the real, shared source of truth now — this is purely a fast-paint cache.
-const CREATORS_CACHE_KEY = "cm_creators_cache";
-
-function loadCachedCreators() {
-  try {
-    const raw = localStorage.getItem(CREATORS_CACHE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-const CREATOR_FIELD_MAP = {
-  name: "name",
-  phone: "phone",
-  email: "email",
-  platform: "platform",
-  profileLink: "profile_link",
-  followers: "followers",
-  gender: "gender",
-  category: "category",
-  language: "language",
-  city: "city",
-  tier: "tier",
-  remark: "remark",
-  quit: "quit",
-  commercial: "commercial",
-};
-
-function creatorFromRow(row) {
-  return {
-    id: row.id,
-    name: row.name || "",
-    phone: row.phone || "",
-    email: row.email || "",
-    platform: row.platform || "",
-    profileLink: row.profile_link || "",
-    followers: row.followers || 0,
-    gender: row.gender || "",
-    category: row.category || "",
-    language: row.language || "",
-    city: row.city || "",
-    tier: row.tier || "",
-    remark: row.remark || "",
-    quit: row.quit || false,
-    commercial: row.commercial ?? "",
-    deletedAt: row.deleted_at || null,
-  };
-}
-
-// Columns in the database that only accept a real number — anything
-// else (blank, "55,000" with a comma, "updating", free text) has to be
-// converted to either a clean number or null before it's sent, or
-// Postgres rejects the entire batch outright.
-const NUMERIC_COLUMNS = new Set(["commercial"]);
-
-function sanitizeNumericForDb(raw) {
-  if (raw == null || raw === "") return null;
-  const cleaned = String(raw).replace(/,/g, "").trim();
-  const num = Number(cleaned);
-  // Anything that isn't a clean number after stripping commas — "updating",
-  // "8000/home shoots-6,000", a name typed in the cell, etc. — becomes
-  // "no value" rather than crashing the save.
-  return Number.isFinite(num) ? num : null;
-}
-
-function toCreatorColumns(fields) {
-  const out = {};
-  Object.entries(fields).forEach(([k, v]) => {
-    const col = CREATOR_FIELD_MAP[k];
-    if (!col) return;
-    if (NUMERIC_COLUMNS.has(col)) {
-      out[col] = sanitizeNumericForDb(v);
-    } else {
-      // A blank cell in the sheet comes through as "" — fine for text
-      // columns, but turning it into null keeps things consistent.
-      out[col] = v === "" ? null : v;
-    }
-  });
-  return out;
-}
 
 // Only these base fields (never remark/quit/commercial — the fields
 // edited inside the app) get pushed during a sheet sync, so a sync never
@@ -101,132 +23,70 @@ const SHEET_SYNCED_FIELDS = [
   "followers", "gender", "category", "language", "city", "tier",
 ];
 
+// Chunk size for any `.in("dedupe_key"/"id", [...])` lookup — keeps a
+// single request's URL/payload reasonable no matter how large a CSV or
+// sheet import is.
+const LOOKUP_CHUNK_SIZE = 300;
+
 export function CreatorsProvider({ children }) {
   const { user, isAdmin } = useAuth();
-  const [creators, setCreators] = useState(() => loadCachedCreators());
+
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [loading, setLoading] = useState(true);
+
+  // A lightweight, on-demand cache of individual creators, keyed by id —
+  // NOT the whole table. Populated by whichever pages of the (now
+  // paginated) Creators table have loaded so far, plus by
+  // ensureCreatorsLoaded() below for campaign pages that need to resolve
+  // a creator by id that may not be on a currently-loaded page.
+  const [creatorsCache, setCreatorsCache] = useState(() => new Map());
+  const cacheCreators = useCallback((rows) => {
+    if (!rows || rows.length === 0) return;
+    setCreatorsCache((prev) => {
+      const next = new Map(prev);
+      rows.forEach((r) => next.set(r.id, r));
+      return next;
+    });
+  }, []);
+
+  const getCreatorById = useCallback((id) => creatorsCache.get(id), [creatorsCache]);
+
+  // Fetches any of the given ids that aren't already cached. Used by
+  // campaign pages: a campaign can reference a creator who isn't on the
+  // currently-loaded page of the main Creators table, so their name/data
+  // has to be fetched on demand instead of assumed to already be in
+  // memory.
+  const ensureCreatorsLoaded = useCallback(
+    async (ids) => {
+      const missing = Array.from(new Set(ids)).filter((id) => id && !creatorsCache.has(id));
+      if (missing.length === 0) return;
+      const fetched = [];
+      for (let i = 0; i < missing.length; i += LOOKUP_CHUNK_SIZE) {
+        const chunk = missing.slice(i, i + LOOKUP_CHUNK_SIZE);
+        const { data, error } = await supabase.from("creators").select("*").in("id", chunk);
+        if (error) {
+          console.error("Failed to load creators for campaign:", error.message);
+          continue;
+        }
+        (data || []).forEach((row) => fetched.push(creatorFromRow(row)));
+      }
+      cacheCreators(fetched);
+    },
+    [creatorsCache, cacheCreators]
+  );
+
+  // Bumped after anything that changes which rows exist (CSV import,
+  // sheet sync, etc.) — usePaginatedCreators watches this and reloads
+  // from the top when it changes, since there's no full local list here
+  // to just update in place anymore.
+  const [refreshSignal, setRefreshSignal] = useState(0);
+  const bumpRefreshSignal = useCallback(() => setRefreshSignal((n) => n + 1), []);
+
   const [sheetLink, setSheetLink] = useState(null);
   const [syncStatus, setSyncStatus] = useState("not_connected");
   const [syncError, setSyncError] = useState("");
+  const [importStatus, setImportStatus] = useState("idle");
+  const [importError, setImportError] = useState("");
   const syncingRef = useRef(false);
-
-  const creatorsRef = useRef(creators);
-  useEffect(() => {
-    creatorsRef.current = creators;
-  }, [creators]);
-
-  // Debounced localStorage write — at small row counts JSON.stringify + the
-  // write itself are effectively instant, but at tens of thousands of rows
-  // they become slow, synchronous, main-thread-blocking work. Writing on
-  // every single keystroke/edit would make every click feel laggy, so
-  // instead we wait for edits to settle for a moment before persisting.
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      try {
-        localStorage.setItem(CREATORS_CACHE_KEY, JSON.stringify(creators));
-      } catch {
-        // Ignore quota/availability errors (including localStorage's ~5-10MB
-        // cap, which a large dataset can exceed) — in-memory state and the
-        // Supabase-backed data still work fine either way.
-      }
-    }, 800);
-    return () => clearTimeout(handle);
-  }, [creators]);
-
-  // Loads the real, shared list from Supabase — this is what makes an
-  // edit one teammate makes visible to everyone else.
-  const loadFromSupabase = useCallback(async () => {
-    const { data, error } = await supabase.from("creators").select("*");
-    if (error) {
-      console.error("Failed to load creators:", error.message);
-      return;
-    }
-    setCreators((data || []).map(creatorFromRow));
-  }, []);
-
-  useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    loadFromSupabase().finally(() => setLoading(false));
-  }, [user, loadFromSupabase]);
-
-  // Google Sheet syncing — entirely an admin capability. Non-admins never
-  // see the linked sheet, never trigger a sync, and this effect doesn't
-  // even run for them — they only ever see whatever's already in the
-  // shared database from an admin's sync.
-  useEffect(() => {
-    if (!user || !isAdmin) return;
-    let cancelled = false;
-    supabase
-      .from("app_settings")
-      .select("value")
-      .eq("key", MASTER_SHEET_KEY)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Failed to load master sheet link:", error.message);
-          return;
-        }
-        if (data?.value) {
-          setSheetLink(data.value);
-          setSyncStatus("synced");
-        } else {
-          setSyncStatus("not_connected");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, isAdmin]);
-
-  const updateCreatorField = useCallback((id, field, value) => {
-    setCreators((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, [field]: value } : c))
-    );
-    const col = CREATOR_FIELD_MAP[field];
-    if (!col) return;
-    supabase
-      .from("creators")
-      .update({ [col]: value })
-      .eq("id", id)
-      .then(({ error }) => {
-        if (error) console.error("Failed to save creator change:", error.message);
-      });
-  }, []);
-
-  // "Deleting" a creator only marks when it happened — the row itself,
-  // and every campaign they were ever part of, stays intact. They're
-  // just marked out of the active All Creators list from here on. Kept
-  // in local state rather than removed entirely, so campaign history
-  // pages can still resolve and show their name correctly.
-  const deleteCreators = useCallback((ids) => {
-    const idSet = new Set(ids);
-    const now = new Date().toISOString();
-    const deletedNames = creatorsRef.current.filter((c) => idSet.has(c.id)).map((c) => c.name);
-    setCreators((prev) => prev.map((c) => (idSet.has(c.id) ? { ...c, deletedAt: now } : c)));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      idSet.forEach((id) => next.delete(id));
-      return next;
-    });
-    supabase
-      .from("creators")
-      .update({ deleted_at: now })
-      .in("id", ids)
-      .then(({ error }) => {
-        if (error) console.error("Failed to delete creators:", error.message);
-      });
-    logActivity(user, "creator_deleted", { count: ids.length, name: deletedNames[0] });
-  }, [user]);
-
-  const deleteCreator = useCallback(
-    (id) => deleteCreators([id]),
-    [deleteCreators]
-  );
 
   const toggleSelected = useCallback((id) => {
     setSelectedIds((prev) => {
@@ -250,34 +110,68 @@ export function CreatorsProvider({ children }) {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
-  const getCreatorById = useCallback(
-    (id) => creators.find((c) => c.id === id),
-    [creators]
+  // Writes one field to Supabase and keeps the shared cache in sync —
+  // the actual table's own local row state (for the row the user is
+  // looking at) is updated separately by the caller via
+  // usePaginatedCreators's patchRow, so the edit shows up instantly
+  // without waiting on this network round trip.
+  const updateCreatorField = useCallback(
+    (id, field, value) => {
+      const cached = creatorsCache.get(id);
+      if (cached) cacheCreators([{ ...cached, [field]: value }]);
+      const col = toCreatorColumns({ [field]: value });
+      supabase
+        .from("creators")
+        .update(col)
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) console.error("Failed to save creator change:", error.message);
+        });
+    },
+    [creatorsCache, cacheCreators]
   );
 
-  const selectedCreators = useMemo(
-    () => creators.filter((c) => selectedIds.has(c.id)),
-    [creators, selectedIds]
+  // "Deleting" a creator only marks when it happened — the row itself,
+  // and every campaign they were ever part of, stays intact. They're
+  // just marked out of the active All Creators list from here on.
+  const deleteCreators = useCallback(
+    (ids) => {
+      const idSet = new Set(ids);
+      const now = new Date().toISOString();
+      const deletedNames = ids
+        .map((id) => creatorsCache.get(id)?.name)
+        .filter(Boolean);
+      setCreatorsCache((prev) => {
+        const next = new Map(prev);
+        idSet.forEach((id) => {
+          const c = next.get(id);
+          if (c) next.set(id, { ...c, deletedAt: now });
+        });
+        return next;
+      });
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        idSet.forEach((id) => next.delete(id));
+        return next;
+      });
+      supabase
+        .from("creators")
+        .update({ deleted_at: now })
+        .in("id", ids)
+        .then(({ error }) => {
+          if (error) console.error("Failed to delete creators:", error.message);
+        });
+      logActivity(user, "creator_deleted", { count: ids.length, name: deletedNames[0] });
+    },
+    [user, creatorsCache]
   );
 
-  // Pushes the sheet-owned fields for every creator in `rows` into
-  // Supabase, matched by the same platform-link dedupe key the sheet sync
-  // already uses internally. Never touches remark/quit/commercial, so an
-  // in-app edit always survives the next sync. `source`, when given, is
-  // stamped onto every row in this call — used to tell "came from the
-  // Google Sheet" apart from "added via CSV upload", so a sheet mirror
-  // sync can never delete something a CSV upload added. `commercialForKeys`,
-  // when given, is a Set of dedupe keys — only those rows also get their
-  // Commercial value pushed, so a sheet's rate/commercial column can
-  // populate a brand-new creator's starting value without ever
-  // overwriting a value someone's already edited in-app for an existing
-  // one.
-  // Large syncs (hundreds of creators across several sheet tabs) sent as
-  // one giant request can time out with a generic "Failed to fetch" —
-  // the connection dying before a response ever comes back, not a real
-  // database rejection. Splitting into smaller chunks avoids that, and
-  // means a failure partway through only affects what's left, not
-  // everything that already saved successfully.
+  // Large syncs (hundreds of creators across several sheet tabs, or a
+  // big CSV) sent as one giant request can time out with a generic
+  // "Failed to fetch" — the connection dying before a response ever
+  // comes back, not a real database rejection. Splitting into smaller
+  // chunks avoids that, and means a failure partway through only affects
+  // what's left, not everything that already saved successfully.
   const SAVE_CHUNK_SIZE = 40;
 
   const pushBaseFieldsToSupabase = useCallback(async (rows, source, commercialForKeys) => {
@@ -286,42 +180,21 @@ export function CreatorsProvider({ children }) {
       const fields = commercialForKeys?.has(key)
         ? [...SHEET_SYNCED_FIELDS, "commercial"]
         : SHEET_SYNCED_FIELDS;
-      const cols = toCreatorColumns(
-        Object.fromEntries(fields.map((k) => [k, r[k]]))
-      );
+      const cols = toCreatorColumns(Object.fromEntries(fields.map((k) => [k, r[k]])));
       const row = { ...cols, dedupe_key: key };
       if (source) row.source = source;
       return row;
     };
 
-    // Rows still carrying a temporary in-memory id ("sync_..."/"imp_...")
-    // are genuinely new — safe to upsert by dedupe_key. Rows with a real
-    // database id already exist — those get upserted by that real id
-    // instead. This split matters because dedupe_key is derived from the
-    // platform link — if a creator's link changed since it was last
-    // saved, the freshly-computed dedupe_key here would differ from
-    // what's stored, which would otherwise make the database think it's
-    // a new row instead of updating the existing one.
     const isTempId = (id) => typeof id === "string" && /^(sync|imp)_/.test(id);
 
-    // Postgres refuses an entire upsert batch if the same conflict
-    // target (id, or dedupe_key) appears more than once in it — this can
-    // happen if the same creator shows up more than once across a
-    // sheet's tabs, or if duplicate entries already exist in the
-    // database from before link-based matching existed. Rather than
-    // chase every possible upstream cause, de-duplicating right here
-    // guarantees it can never reach the database that way — keeping
-    // whichever occurrence came last (most recently processed).
     function dedupeBy(rowsToDedupe, keyFn) {
       const map = new Map();
       rowsToDedupe.forEach((r) => map.set(keyFn(r), r));
       return Array.from(map.values());
     }
 
-    const newRows = dedupeBy(
-      rows.filter((r) => isTempId(r.id)).map(buildRow),
-      (r) => r.dedupe_key
-    );
+    const newRows = dedupeBy(rows.filter((r) => isTempId(r.id)).map(buildRow), (r) => r.dedupe_key);
     const existingRows = dedupeBy(
       rows.filter((r) => !isTempId(r.id)).map((r) => ({ id: r.id, ...buildRow(r) })),
       (r) => r.id
@@ -333,14 +206,9 @@ export function CreatorsProvider({ children }) {
       for (let i = 0; i < payload.length; i += SAVE_CHUNK_SIZE) {
         const chunk = payload.slice(i, i + SAVE_CHUNK_SIZE);
         const batchNum = Math.floor(i / SAVE_CHUNK_SIZE) + 1;
-        const { error } = await supabase
-          .from("creators")
-          .upsert(chunk, { onConflict: conflictTarget });
+        const { error } = await supabase.from("creators").upsert(chunk, { onConflict: conflictTarget });
         if (error) {
           console.error(`Failed to save creators (${label}, batch ${batchNum}/${totalBatches}):`, error.message);
-          // Collected, not thrown immediately — every remaining batch
-          // still gets attempted, so one sync attempt surfaces every
-          // real problem at once instead of just the first one hit.
           failures.push(`${label} batch ${batchNum}/${totalBatches}: ${error.message}`);
         }
       }
@@ -359,15 +227,60 @@ export function CreatorsProvider({ children }) {
     }
   }, []);
 
+  // Looks up, by dedupe_key, which of the given rows already exist in
+  // the database — scales with the size of the CSV/sheet being
+  // imported, never with the total size of the creators table, since it
+  // only ever queries for the specific keys present in `rows`.
+  const fetchExistingByDedupeKeys = useCallback(async (rows) => {
+    const keys = Array.from(new Set(rows.map(dedupeKey)));
+    const existingMap = new Map(); // dedupe_key -> { id, profileLink, platform }
+    for (let i = 0; i < keys.length; i += LOOKUP_CHUNK_SIZE) {
+      const chunk = keys.slice(i, i + LOOKUP_CHUNK_SIZE);
+      const { data, error } = await supabase
+        .from("creators")
+        .select("id, dedupe_key, profile_link, platform")
+        .in("dedupe_key", chunk);
+      if (error) {
+        console.error("Failed to check for existing creators:", error.message);
+        continue;
+      }
+      (data || []).forEach((row) => {
+        existingMap.set(row.dedupe_key, { id: row.id, profileLink: row.profile_link, platform: row.platform });
+      });
+    }
+    return existingMap;
+  }, []);
+
+  // Builds the "N will be added, M will be updated" preview for a parsed
+  // CSV, purely from a DB lookup of the CSV's own dedupe keys — never
+  // needs the full creators table in memory, so this stays fast no
+  // matter how large the table grows.
+  const previewCsvImport = useCallback(
+    async (rows) => {
+      const existingMap = await fetchExistingByDedupeKeys(rows);
+      const addedKeys = [];
+      let added = 0;
+      let updated = 0;
+      const merged = rows.map((row) => {
+        const key = dedupeKey(row);
+        const match = existingMap.get(key);
+        if (match) {
+          updated++;
+          return { ...row, id: match.id };
+        }
+        added++;
+        addedKeys.push(key);
+        return { ...row, id: `imp_${Date.now()}_${added}` };
+      });
+      return { merged, added, updated, addedKeys };
+    },
+    [fetchExistingByDedupeKeys]
+  );
+
   // Confirms a local file upload (CSV) by actually saving it to
   // Supabase — the base fields only, same as a sheet sync would, so any
   // in-app edits (remark/quit/commercial) on existing creators are left
-  // alone. `addedKeys` (the dedupe keys of rows that are genuinely new,
-  // from syncCreators) get tagged source: "upload" — existing creators
-  // being updated keep whatever source they already had, so re-uploading
-  // a CSV that happens to include sheet-sourced creators can never
-  // reclassify them as upload-only and put them at risk of nothing (they
-  // were never at risk from CSV anyway — uploads never delete).
+  // alone.
   const confirmLocalImport = useCallback(
     async (mergedRows, { addedKeys = [] } = {}) => {
       const addedKeySet = new Set(addedKeys);
@@ -377,30 +290,79 @@ export function CreatorsProvider({ children }) {
       if (newRows.length > 0) await pushBaseFieldsToSupabase(newRows, "upload", addedKeySet);
       if (existingRows.length > 0) await pushBaseFieldsToSupabase(existingRows);
 
-      await loadFromSupabase();
+      bumpRefreshSignal();
       logActivity(user, "creators_imported", { added: newRows.length, updated: existingRows.length });
     },
-    [pushBaseFieldsToSupabase, loadFromSupabase, user]
+    [pushBaseFieldsToSupabase, bumpRefreshSignal, user]
   );
 
-  // Admin-only Google Sheet sync — pulls every tab of the linked sheet,
-  // matches by platform link (same rule CSV upload uses), and only ever
-  // pushes the sheet-owned base fields, never touching remark/quit/
-  // commercial. Mirror mode (admin-only, opt-in) additionally removes
-  // creators that came from the sheet and are no longer present in it —
-  // scoped to sheet-sourced creators specifically, so a CSV upload can
-  // never be wiped out by a sheet sync.
+  // Admin-only Google Sheet sync. Matching against existing creators is
+  // done via a DB dedupe-key lookup scoped to just the sheet's own rows
+  // (same approach as CSV import) — EXCEPT in mirror mode, which by
+  // definition needs to see every currently sheet-sourced creator (not
+  // just ones the new sheet data happens to match) in order to detect
+  // which ones are no longer in the sheet at all. That one path scales
+  // with "how many sheet-sourced creators exist," not with the total
+  // creators table — worth knowing if the linked sheet itself is ever
+  // expected to grow into the tens of thousands.
+  const fetchAllSheetSourced = useCallback(async () => {
+    const out = [];
+    let offset = 0;
+    const CHUNK = 1000;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data, error } = await supabase
+        .from("creators")
+        .select("id, profile_link, platform")
+        .eq("source", "sheet")
+        .range(offset, offset + CHUNK - 1);
+      if (error) {
+        console.error("Failed to load sheet-sourced creators:", error.message);
+        break;
+      }
+      (data || []).forEach((row) => out.push({ id: row.id, profileLink: row.profile_link, platform: row.platform }));
+      if (!data || data.length < CHUNK) break;
+      offset += CHUNK;
+    }
+    return out;
+  }, []);
+
   const syncNow = useCallback(
     async (rawUrl, { mirror = false } = {}) => {
       if (!isAdmin) return;
       setSyncStatus("syncing");
       try {
-        const beforeSync = creatorsRef.current;
-        const { merged, added, updated, removed, addedKeys, rowErrors } = await syncFromSheetUrl(
-          rawUrl,
-          beforeSync,
-          { mirror }
-        );
+        const beforeSync = mirror
+          ? await fetchAllSheetSourced()
+          : []; // populated per-row below for non-mirror via existingMap
+
+        // For non-mirror syncs, the caller only needs to know about
+        // creators that could plausibly match one of the incoming rows —
+        // syncFromSheetUrl/syncCreators only uses `existing` to build a
+        // link-match index, so a targeted subset behaves identically to
+        // passing the whole table, without ever loading it.
+        const result = mirror
+          ? await syncFromSheetUrl(rawUrl, beforeSync, { mirror: true })
+          : await (async () => {
+              // Peek at the sheet rows first so we know which dedupe keys
+              // to look up — syncFromSheetUrl already does its own fetch
+              // internally, so this fetches the sheet's CSV rows here
+              // too and passes a pre-matched `existing` subset in.
+              let rows = [];
+              if (isGoogleSheetsShareUrl(rawUrl)) {
+                const tabs = await fetchSheetAllTabsCsv(rawUrl);
+                tabs.forEach(({ csv }) => rows.push(...parseCsvImport(csv).rows));
+              } else {
+                const text = await fetchSheetCsv(normaliseSheetUrl(rawUrl));
+                rows = parseCsvImport(text).rows;
+              }
+              const existingMap = await fetchExistingByDedupeKeys(rows);
+              const existingSubset = Array.from(existingMap.values());
+              const { merged, added, updated, addedKeys } = syncCreators(existingSubset, rows, { mirror: false });
+              return { merged, added, updated, removed: 0, addedKeys, rowErrors: [] };
+            })();
+
+        const { merged, added, updated, removed, addedKeys } = result;
         await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
 
         if (mirror) {
@@ -418,7 +380,7 @@ export function CreatorsProvider({ children }) {
           }
         }
 
-        await loadFromSupabase();
+        bumpRefreshSignal();
 
         const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
         const { error: settingsError } = await supabase.from("app_settings").upsert(
@@ -434,14 +396,43 @@ export function CreatorsProvider({ children }) {
         setSyncStatus("synced");
         setSyncError("");
         logActivity(user, "sheet_synced", { added, updated, removed: mirror ? removed : 0 });
-        return { added, updated, removed, rowErrors };
+        return { added, updated, removed, rowErrors: result.rowErrors || [] };
       } catch (err) {
         setSyncStatus("error");
         setSyncError(err?.message || "Something went wrong while syncing.");
         throw err;
       }
     },
-    [isAdmin, pushBaseFieldsToSupabase, loadFromSupabase, user]
+    [isAdmin, pushBaseFieldsToSupabase, bumpRefreshSignal, user, fetchAllSheetSourced, fetchExistingByDedupeKeys]
+  );
+
+  const importFromSheet = useCallback(
+    async (rawUrl) => {
+      setImportStatus("importing");
+      setImportError("");
+      try {
+        let rows = [];
+        if (isGoogleSheetsShareUrl(rawUrl)) {
+          const tabs = await fetchSheetAllTabsCsv(rawUrl);
+          tabs.forEach(({ csv }) => rows.push(...parseCsvImport(csv).rows));
+        } else {
+          const text = await fetchSheetCsv(normaliseSheetUrl(rawUrl));
+          rows = parseCsvImport(text).rows;
+        }
+        const existingMap = await fetchExistingByDedupeKeys(rows);
+        const existingSubset = Array.from(existingMap.values());
+        const { merged, added, updated, addedKeys } = syncCreators(existingSubset, rows, { mirror: false });
+        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
+        bumpRefreshSignal();
+        setImportStatus("done");
+        return { added, updated, rowErrors: [] };
+      } catch (err) {
+        setImportStatus("error");
+        setImportError(err?.message || "Something went wrong while importing.");
+        throw err;
+      }
+    },
+    [pushBaseFieldsToSupabase, bumpRefreshSignal, fetchExistingByDedupeKeys]
   );
 
   const unlinkSheet = useCallback(async () => {
@@ -472,48 +463,21 @@ export function CreatorsProvider({ children }) {
     [isAdmin, sheetLink, user]
   );
 
-  // The moment the app opens, for an admin only: if the shared master
-  // sheet is linked, sync once — and only once per session, not
-  // repeatedly. From then on, syncing only happens when an admin
-  // explicitly clicks "Sync now".
-  const didInitialSyncRef = useRef(false);
-  useEffect(() => {
-    if (!user || !isAdmin || !sheetLink?.url) return;
-    if (didInitialSyncRef.current) return;
-    didInitialSyncRef.current = true;
-
-    async function initialSync() {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      try {
-        await syncNow(sheetLink.url, { mirror: Boolean(sheetLink.mirror) });
-      } catch {
-        // Swallowed on purpose — a brief network hiccup shouldn't
-        // interrupt the user. The status pill already reflects the error.
-      } finally {
-        syncingRef.current = false;
-      }
-    }
-
-    initialSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isAdmin, sheetLink?.url]);
-
   const value = useMemo(
     () => ({
-      creators,
-      setCreators,
-      loading,
+      cacheCreators,
+      getCreatorById,
+      ensureCreatorsLoaded,
+      refreshSignal,
+      bumpRefreshSignal,
       updateCreatorField,
-      deleteCreator,
-      confirmLocalImport,
       deleteCreators,
+      confirmLocalImport,
+      previewCsvImport,
       selectedIds,
       toggleSelected,
       selectMany,
       clearSelection,
-      selectedCreators,
-      getCreatorById,
       isAdmin,
       sheetLink,
       syncStatus,
@@ -521,20 +485,24 @@ export function CreatorsProvider({ children }) {
       syncNow,
       unlinkSheet,
       setSheetMirror,
+      importFromSheet,
+      importStatus,
+      importError,
     }),
     [
-      creators,
-      loading,
+      cacheCreators,
+      getCreatorById,
+      ensureCreatorsLoaded,
+      refreshSignal,
+      bumpRefreshSignal,
       updateCreatorField,
-      deleteCreator,
-      confirmLocalImport,
       deleteCreators,
+      confirmLocalImport,
+      previewCsvImport,
       selectedIds,
       toggleSelected,
       selectMany,
       clearSelection,
-      selectedCreators,
-      getCreatorById,
       isAdmin,
       sheetLink,
       syncStatus,
@@ -542,12 +510,11 @@ export function CreatorsProvider({ children }) {
       syncNow,
       unlinkSheet,
       setSheetMirror,
+      importFromSheet,
+      importStatus,
+      importError,
     ]
   );
 
-  return (
-    <CreatorsContext.Provider value={value}>
-      {children}
-    </CreatorsContext.Provider>
-  );
+  return <CreatorsContext.Provider value={value}>{children}</CreatorsContext.Provider>;
 }

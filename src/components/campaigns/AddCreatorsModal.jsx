@@ -1,27 +1,69 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import Modal from "../ui/Modal";
-import { useCreators } from "../../hooks/useCreators";
+import { supabase } from "../../lib/supabaseClient";
 import { useCampaigns } from "../../hooks/useCampaigns";
 import { useToast } from "../../hooks/useToast";
 import { fmt, platformNames } from "../../utils/format";
+import { creatorFromRow } from "../../utils/creatorRow";
+
+const RESULT_LIMIT = 30;
 
 export default function AddCreatorsModal({ open, onClose, campaignId, existingCreatorIds }) {
-  const { creators } = useCreators();
   const { addCreatorsToCampaign } = useCampaigns();
   const showToast = useToast();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
 
-  const available = useMemo(() => {
-    const lowerSearch = search.trim().toLowerCase();
-    return creators.filter(
-      (c) =>
-        !existingCreatorIds.has(c.id) &&
-        (lowerSearch === "" || c.name.toLowerCase().includes(lowerSearch))
-    );
-  }, [creators, existingCreatorIds, search]);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 200);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  // Live search against the database instead of filtering a full local
+  // list — there's no longer a full creators list held in memory to
+  // filter. Requires at least 2 characters so opening the modal (or
+  // clearing the box) doesn't fire off a "match everything" query
+  // against a 50,000+ row table.
+  useEffect(() => {
+    if (!open) return;
+    if (debouncedSearch.length < 2) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const escaped = debouncedSearch.replace(/[%_]/g, (m) => `\\${m}`);
+    supabase
+      .from("creators")
+      .select("*")
+      .is("deleted_at", null)
+      .ilike("name", `%${escaped}%`)
+      .order("followers", { ascending: false })
+      .limit(RESULT_LIMIT)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to search creators:", error.message);
+          setResults([]);
+        } else {
+          setResults((data || []).map(creatorFromRow));
+        }
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, debouncedSearch]);
+
+  const available = useMemo(
+    () => results.filter((c) => !existingCreatorIds.has(c.id)),
+    [results, existingCreatorIds]
+  );
 
   function togglePick(id) {
     setPicked((prev) => {
@@ -34,6 +76,8 @@ export default function AddCreatorsModal({ open, onClose, campaignId, existingCr
 
   function handleClose() {
     setSearch("");
+    setDebouncedSearch("");
+    setResults([]);
     setPicked(new Set());
     onClose();
   }
@@ -50,7 +94,7 @@ export default function AddCreatorsModal({ open, onClose, campaignId, existingCr
       open={open}
       onClose={handleClose}
       title="Add Creators"
-      description="Search and select creators to add to this campaign."
+      description="Search by name to find creators to add to this campaign."
       maxWidth={520}
     >
       <div className="relative mb-3">
@@ -64,14 +108,22 @@ export default function AddCreatorsModal({ open, onClose, campaignId, existingCr
           autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
+          placeholder="Search by name… (min 2 characters)"
           className="w-full rounded-lg border py-2 pl-8 pr-2.5 text-[13px] outline-none"
           style={{ background: "var(--up)", borderColor: "var(--ln)", color: "var(--ink)" }}
         />
       </div>
 
       <div className="mb-3 flex max-h-[300px] flex-col gap-1.5 overflow-auto">
-        {available.length === 0 ? (
+        {debouncedSearch.length < 2 ? (
+          <p className="py-6 text-center text-xs" style={{ color: "var(--ink3)" }}>
+            Type at least 2 characters to search.
+          </p>
+        ) : loading ? (
+          <p className="py-6 text-center text-xs" style={{ color: "var(--ink3)" }}>
+            Searching…
+          </p>
+        ) : available.length === 0 ? (
           <p className="py-6 text-center text-xs" style={{ color: "var(--ink3)" }}>
             No matching creators.
           </p>
