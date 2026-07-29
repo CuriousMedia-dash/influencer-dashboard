@@ -1,5 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
-import { FixedSizeList } from "react-window";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { ChevronUp, ChevronDown, Trash2, Flag } from "lucide-react";
 import Badge from "../ui/Badge";
 import TierBadge from "../ui/TierBadge";
@@ -42,11 +41,11 @@ const HEADER_HEIGHT = 37;
 const LIST_HEIGHT = 560;
 
 // One virtualized row. Only re-renders when ITS OWN row data, selection
-// state, or admin status actually changes — react-window only mounts
-// the ~15-20 rows physically visible at once (plus a small overscan
-// buffer) no matter how many thousands of rows exist in total, which is
-// what actually fixes the lag at scale (600,000+ real DOM nodes at
-// 50k rows, down to a small constant number).
+// state, or admin status actually changes — CreatorsTable below only
+// mounts the ~25-40 rows physically visible at once (plus a small
+// overscan buffer) no matter how many thousands of rows exist in total,
+// which is what actually fixes the lag at scale (600,000+ real DOM
+// nodes at 50k rows, down to a small constant number).
 const Row = memo(function Row({ index, style, data }) {
   const { rows, selectedIds, onToggleSelect, onUpdateField, onDeleteRow, isAdmin } = data;
   const r = rows[index];
@@ -284,44 +283,45 @@ function CreatorsTable({
 }) {
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
   const headerRef = useRef(null);
-  const listOuterRef = useRef(null);
+  const bodyRef = useRef(null);
+  // Only re-renders the visible slice — not on every pixel of scroll, but
+  // ~15-25 times a second while actively scrolling, which is what
+  // determines which handful of rows to actually mount at all.
+  const [scrollTop, setScrollTop] = useState(0);
 
-  // The header lives outside react-window's own scroll container (so it
-  // can stay visually fixed while only the body virtualizes), so its
-  // horizontal scroll position is kept in sync manually whenever the
-  // body scrolls sideways. react-window's own onScroll prop only reports
-  // vertical offset, not a real DOM event, so this listens directly on
-  // the list's actual scrollable DOM node instead.
-  useEffect(() => {
-    const el = listOuterRef.current;
-    if (!el) return;
-    function handleScroll() {
-      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
-    }
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [rows.length]);
-
-  // Stable object reference for react-window's itemData — if this were
-  // recreated every render, every row would re-render every time
-  // regardless of the Row component being memoized.
-  const itemData = useMemo(
-    () => ({ rows, selectedIds, onToggleSelect, onUpdateField, onDeleteRow, isAdmin }),
-    [rows, selectedIds, onToggleSelect, onUpdateField, onDeleteRow, isAdmin]
+  const OVERSCAN = 6;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(
+    rows.length - 1,
+    Math.floor((scrollTop + LIST_HEIGHT) / ROW_HEIGHT) + OVERSCAN
   );
+  const visibleIndices = [];
+  for (let i = startIndex; i <= endIndex; i++) visibleIndices.push(i);
 
-  // Fires more or less continuously as the user scrolls — once they're
-  // within a few rows of the end of what's currently loaded, fetch the
-  // next page automatically. This is what makes the table feel like it
-  // just has all 50,000+ rows, without ever holding more than a couple
-  // hundred in memory at once.
-  const handleItemsRendered = useCallback(
-    ({ visibleStopIndex }) => {
-      if (hasMore && !loadingMore && visibleStopIndex >= rows.length - 5) {
+  // One handler covers both concerns: keeping the header's horizontal
+  // position in sync with the body, and (in the same pass) triggering
+  // the next page of results once the user scrolls near the bottom of
+  // what's currently loaded — this is what makes the table feel like it
+  // just has all 50,000+ rows, without ever mounting more than a couple
+  // dozen real DOM rows at once.
+  const handleScroll = useCallback(
+    (e) => {
+      const el = e.currentTarget;
+      setScrollTop(el.scrollTop);
+      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
+      if (hasMore && !loadingMore && el.scrollTop + el.clientHeight >= el.scrollHeight - 300) {
         onLoadMore?.();
       }
     },
-    [hasMore, loadingMore, rows.length, onLoadMore]
+    [hasMore, loadingMore, onLoadMore]
+  );
+
+  // Stable object reference — if this were recreated every render, every
+  // visible row would re-render every time regardless of Row being
+  // memoized.
+  const itemData = useMemo(
+    () => ({ rows, selectedIds, onToggleSelect, onUpdateField, onDeleteRow, isAdmin }),
+    [rows, selectedIds, onToggleSelect, onUpdateField, onDeleteRow, isAdmin]
   );
 
   return (
@@ -329,8 +329,8 @@ function CreatorsTable({
       className="overflow-hidden rounded-[13px] border shadow-[0_1px_2px_rgba(16,36,62,.04)]"
       style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
     >
-      {/* Header row — a plain div (not part of the virtualized list), kept
-          in horizontal sync with the body via handleBodyScroll above. */}
+      {/* Header row — kept in horizontal sync with the body via
+          handleScroll above. */}
       <div
         ref={headerRef}
         className="overflow-hidden"
@@ -380,19 +380,31 @@ function CreatorsTable({
         </div>
       ) : (
         <>
-          <FixedSizeList
-            height={LIST_HEIGHT}
-            width="100%"
-            itemCount={rows.length}
-            itemSize={ROW_HEIGHT}
-            itemData={itemData}
-            overscanCount={8}
-            outerRef={listOuterRef}
-            onItemsRendered={handleItemsRendered}
-            style={{ overflowX: "auto" }}
+          <div
+            ref={bodyRef}
+            onScroll={handleScroll}
+            style={{ height: LIST_HEIGHT, overflow: "auto" }}
           >
-            {Row}
-          </FixedSizeList>
+            {/* Spacer that gives the scroll container its true total
+                height/width, so the browser's own scrollbar behaves
+                exactly as if every row really were in the DOM. */}
+            <div style={{ position: "relative", height: rows.length * ROW_HEIGHT, width: TOTAL_WIDTH }}>
+              {visibleIndices.map((i) => (
+                <Row
+                  key={rows[i].id}
+                  index={i}
+                  data={itemData}
+                  style={{
+                    position: "absolute",
+                    top: i * ROW_HEIGHT,
+                    left: 0,
+                    width: TOTAL_WIDTH,
+                    height: ROW_HEIGHT,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
           {loadingMore && (
             <div
               className="border-t px-3 py-2 text-center text-[11px]"
