@@ -326,7 +326,7 @@ function CreatorsTable({
 
   return (
     <div
-      className="overflow-hidden rounded-[13px] border shadow-[0_1px_2px_rgba(16,36,62,.04)]"
+      className="overflow-hidden rounded-[13px] border text-xs shadow-[0_1px_2px_rgba(16,36,62,.04)]"
       style={{ background: "var(--panel)", borderColor: "var(--ln)" }}
     >
       {/* Header row — kept in horizontal sync with the body via
