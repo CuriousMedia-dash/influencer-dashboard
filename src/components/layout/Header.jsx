@@ -5,19 +5,24 @@ import { useAuth } from "../../hooks/useAuth";
 import { useCreators } from "../../hooks/useCreators";
 import { timeAgo } from "../../utils/format";
 import InviteBrandModal from "../ui/InviteBrandModal";
-import UserAvatar from "../ui/UserAvatar";
+import ModuleSwitcher from "./ModuleSwitcher";
 import ActivityLogModal from "../ui/ActivityLogModal";
 
 function statusDotColor(syncStatus) {
   return syncStatus === "synced" ? "#2BAE66" : "var(--ink3)";
 }
 
-export default function Header({ onGearClick }) {
+export default function Header({ onGearClick, onAcquisitionUploadClick, activeModule, onModuleChange }) {
   const { theme, toggleTheme } = useTheme();
   const { user, signOut, isAdmin } = useAuth();
   const { syncStatus, sheetLink } = useCreators();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activityLogOpen, setActivityLogOpen] = useState(false);
+
+  // The sheet-sync dot, CSV/Sheet upload icon, brand invite, and activity
+  // log are all Influencer Marketing features — Creator Acquisition is a
+  // separate, non-interconnected module and doesn't show any of them.
+  const isInfluencerModule = activeModule !== "acquisition";
 
   return (
     <header
@@ -34,7 +39,7 @@ export default function Header({ onGearClick }) {
             }}
           >
             <span className="pulse-dot" />
-            INFLUENCER DASHBOARD
+            {activeModule === "acquisition" ? "CREATOR ACQUISITION" : "INFLUENCER DASHBOARD"}
           </div>
 
           <h1
@@ -52,7 +57,7 @@ export default function Header({ onGearClick }) {
 
         <div className="flex flex-col items-end gap-3">
         <div className="flex items-center gap-2">
-          {isAdmin && (
+          {isInfluencerModule && isAdmin && (
             <div
               title={
                 sheetLink?.url
@@ -87,26 +92,49 @@ export default function Header({ onGearClick }) {
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
           </button>
 
-          <button
-            type="button"
-            onClick={onGearClick}
-            title={isAdmin ? "Import creators / manage linked Google Sheet" : "Upload creators (CSV)"}
-            aria-label={isAdmin ? "Import creators / manage linked Google Sheet" : "Upload creators (CSV)"}
-            className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
-            style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--up)";
-              e.currentTarget.style.color = "var(--ink)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "var(--panel)";
-              e.currentTarget.style.color = "var(--ink2)";
-            }}
-          >
-            <Upload size={15} />
-          </button>
+          {isInfluencerModule && (
+            <button
+              type="button"
+              onClick={onGearClick}
+              title={isAdmin ? "Import creators / manage linked Google Sheet" : "Upload creators (CSV)"}
+              aria-label={isAdmin ? "Import creators / manage linked Google Sheet" : "Upload creators (CSV)"}
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+                e.currentTarget.style.color = "var(--ink)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+                e.currentTarget.style.color = "var(--ink2)";
+              }}
+            >
+              <Upload size={15} />
+            </button>
+          )}
 
-          {isAdmin && (
+          {!isInfluencerModule && (
+            <button
+              type="button"
+              onClick={onAcquisitionUploadClick}
+              title="Import creators (CSV / Master Sheet)"
+              aria-label="Import creators (CSV / Master Sheet)"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+                e.currentTarget.style.color = "var(--ink)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+                e.currentTarget.style.color = "var(--ink2)";
+              }}
+            >
+              <Upload size={15} />
+            </button>
+          )}
+
+          {isInfluencerModule && isAdmin && (
             <button
               type="button"
               onClick={() => setInviteOpen(true)}
@@ -127,7 +155,7 @@ export default function Header({ onGearClick }) {
             </button>
           )}
 
-          {isAdmin && (
+          {isInfluencerModule && isAdmin && (
             <button
               type="button"
               onClick={() => setActivityLogOpen(true)}
@@ -167,11 +195,22 @@ export default function Header({ onGearClick }) {
             </button>
           )}
         </div>
-        {user && <UserAvatar email={user.email} avatarUrl={user.user_metadata?.avatar_url} size={48} />}
+        {user && (
+          <ModuleSwitcher
+            email={user.email}
+            avatarUrl={user.user_metadata?.avatar_url}
+            activeModule={activeModule}
+            onChange={onModuleChange}
+          />
+        )}
         </div>
       </div>
-      <InviteBrandModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
-      <ActivityLogModal open={activityLogOpen} onClose={() => setActivityLogOpen(false)} />
+      {isInfluencerModule && (
+        <>
+          <InviteBrandModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+          <ActivityLogModal open={activityLogOpen} onClose={() => setActivityLogOpen(false)} />
+        </>
+      )}
     </header>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Layout from "./components/layout/Layout";
@@ -13,6 +13,8 @@ import { useAuth } from "./hooks/useAuth";
 import { useBrandAuth } from "./hooks/useBrandAuth";
 
 import Workspace from "./pages/Workspace";
+import CreatorAcquisitionWorkspace from "./pages/CreatorAcquisitionWorkspace";
+import { AcquisitionCreatorsProvider } from "./context/AcquisitionCreatorsContext";
 import SharedCampaignView from "./pages/SharedCampaignView";
 import BrandDashboard from "./pages/BrandDashboard";
 import Login from "./pages/Login";
@@ -127,7 +129,29 @@ function BrandAuthGate({ children }) {
   return children;
 }
 
+const MODULE_STORAGE_KEY = "cm_active_module";
+
 export default function App() {
+  // Which of the two (non-interconnected) modules is showing — remembered
+  // across visits via localStorage, per the avatar-icon module switcher.
+  const [activeModule, setActiveModule] = useState(() => {
+    try {
+      return localStorage.getItem(MODULE_STORAGE_KEY) || "influencer";
+    } catch {
+      return "influencer";
+    }
+  });
+
+  function handleModuleChange(next) {
+    setActiveModule(next);
+    try {
+      localStorage.setItem(MODULE_STORAGE_KEY, next);
+    } catch {
+      // localStorage unavailable (e.g. private browsing) — the in-memory
+      // state above still works for the rest of this session.
+    }
+  }
+
   // Anti-copy: blocks right-click, copy, and cut, everywhere in the app
   // (including the public Brand Dashboard). A deterrent only — doesn't
   // stop screenshots/screen recording, and can be bypassed by disabling
@@ -174,12 +198,23 @@ export default function App() {
                     path="/*"
                     element={
                       <AuthGate>
-                        <Layout>
-                          <Routes>
-                            <Route path="/" element={<Workspace />} />
-                            <Route path="/campaigns/:id" element={<Workspace />} />
-                          </Routes>
-                        </Layout>
+                        {activeModule === "acquisition" ? (
+                          <AcquisitionCreatorsProvider>
+                            <Layout activeModule={activeModule} onModuleChange={handleModuleChange}>
+                              <Routes>
+                                <Route path="/" element={<CreatorAcquisitionWorkspace />} />
+                                <Route path="/campaigns/:id" element={<Workspace />} />
+                              </Routes>
+                            </Layout>
+                          </AcquisitionCreatorsProvider>
+                        ) : (
+                          <Layout activeModule={activeModule} onModuleChange={handleModuleChange}>
+                            <Routes>
+                              <Route path="/" element={<Workspace />} />
+                              <Route path="/campaigns/:id" element={<Workspace />} />
+                            </Routes>
+                          </Layout>
+                        )}
                       </AuthGate>
                     }
                   />
