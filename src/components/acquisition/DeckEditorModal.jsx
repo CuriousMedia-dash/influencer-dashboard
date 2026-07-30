@@ -125,8 +125,10 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     let PptxGenJS;
     try {
       ({ default: PptxGenJS } = await import("pptxgenjs"));
-    } catch {
-      throw new Error("Missing dependency: run `npm install pptxgenjs` in your project, then reload.");
+    } catch (err) {
+      throw new Error(
+        `Couldn't load the deck-export library (${err?.message || err}). Try a hard refresh first — if it keeps happening, run \`npm install pptxgenjs\`, commit it, and redeploy.`
+      );
     }
 
     const pptx = new PptxGenJS();
