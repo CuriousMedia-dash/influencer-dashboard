@@ -196,7 +196,21 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
           attachments: [{ filename: fileName, content: base64 }],
         },
       });
-      if (error) throw error;
+      if (error) {
+        // supabase-js only gives a generic "non-2xx" message by default —
+        // the actual reason (e.g. Resend's validation error) is in the
+        // response body, so pull that out for a useful toast instead.
+        let detail = error.message;
+        try {
+          if (error.context && typeof error.context.json === "function") {
+            const body = await error.context.json();
+            detail = typeof body?.error === "string" ? body.error : JSON.stringify(body?.error ?? body);
+          }
+        } catch {
+          // fall back to error.message above
+        }
+        throw new Error(detail);
+      }
       showToast(`Sent to ${bcc.length} creator${bcc.length === 1 ? "" : "s"}, deck attached.`, true);
       onClose();
     } catch (err) {
