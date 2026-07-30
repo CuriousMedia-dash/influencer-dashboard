@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Mail, ImagePlus, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, Send, ImagePlus, X, RotateCcw } from "lucide-react";
 import Modal from "../ui/Modal";
+import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
 import { buildDefaultDecks, DECK_BG, DECK_ACCENT } from "../../utils/acquisitionDeckTemplates";
+import { getSavedDeckSlides, saveDeckSlides, clearSavedDeckSlides } from "../../utils/acquisitionDeckStorage";
 
 // Renders a 16:9 preview of the current slide, styled after the Curious
 // Media deck (dark background, bold headline, orange accent bar). If the
@@ -45,6 +47,9 @@ function SlidePreview({ slide, isLast }) {
   );
 }
 
+const DEFAULT_INTRO =
+  "Hi,\n\nGreat to connect — please find our deck attached, covering what we do and the results we've driven for creators like you.\n\nWould love to set up a quick call if this looks interesting.\n\nBest,\nCurious Media";
+
 export default function DeckEditorModal({ open, onClose, recipients }) {
   const showToast = useToast();
   const decks = useMemo(() => buildDefaultDecks(), []);
@@ -61,19 +66,43 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
 
   const [category, setCategory] = useState(majorityCategory);
   const [slides, setSlides] = useState(() => {
+    const saved = getSavedDeckSlides(majorityCategory);
+    if (saved) return saved;
     const d = decks.find((x) => x.category === majorityCategory) || decks[0];
     return d.slides.map((s) => ({ ...s }));
   });
   const [slideIndex, setSlideIndex] = useState(0);
-  const [downloaded, setDownloaded] = useState(false);
+  const [subject, setSubject] = useState(`Curious Media × ${majorityCategory}`);
+  const [introMessage, setIntroMessage] = useState(DEFAULT_INTRO);
+  const [sending, setSending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   function handleCategoryChange(cat) {
     setCategory(cat);
-    const d = decks.find((x) => x.category === cat);
+    setSubject(`Curious Media × ${cat}`);
+    const saved = getSavedDeckSlides(cat);
+    if (saved) {
+      setSlides(saved);
+    } else {
+      const d = decks.find((x) => x.category === cat);
+      setSlides(d.slides.map((s) => ({ ...s })));
+    }
+    setSlideIndex(0);
+  }
+
+  function handleResetToDefault() {
+    clearSavedDeckSlides(category);
+    const d = decks.find((x) => x.category === category);
     setSlides(d.slides.map((s) => ({ ...s })));
     setSlideIndex(0);
-    setDownloaded(false);
+    showToast("Reset to the default template for this category.", true);
   }
+
+  // Every edit — text or image — is saved immediately, so it's still
+  // there next time this category is opened, until reset above.
+  useEffect(() => {
+    saveDeckSlides(category, slides);
+  }, [category, slides]);
 
   function updateSlideField(field, value) {
     setSlides((prev) => prev.map((s, i) => (i === slideIndex ? { ...s, [field]: value } : s)));
@@ -89,13 +118,15 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
 
   const currentSlide = slides[slideIndex];
 
-  async function handleDownload() {
+  // Builds the .pptx in-browser. `outputType` controls whether it triggers
+  // a file download (for the "Download" button) or hands back the raw
+  // bytes to attach to an outgoing email (for "Send").
+  async function buildPptx(outputType) {
     let PptxGenJS;
     try {
       ({ default: PptxGenJS } = await import("pptxgenjs"));
     } catch {
-      showToast("Missing dependency: run `npm install pptxgenjs` in your project, then reload.", false);
-      return;
+      throw new Error("Missing dependency: run `npm install pptxgenjs` in your project, then reload.");
     }
 
     const pptx = new PptxGenJS();
@@ -128,22 +159,51 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       }
     });
 
-    await pptx.writeFile({ fileName: `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx` });
-    setDownloaded(true);
-    showToast("Deck downloaded — attach it in the mail window that opens next.", true);
+    if (outputType === "download") {
+      await pptx.writeFile({ fileName: `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx` });
+      return null;
+    }
+    // base64, no data: prefix — what Resend's attachments API expects
+    return pptx.write({ outputType: "base64" });
   }
 
-  function handleOpenMail() {
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      await buildPptx("download");
+    } catch (err) {
+      showToast(err.message || "Couldn't build the deck.", false);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleSend() {
     const bcc = recipients.map((r) => r.email).filter(Boolean);
     if (bcc.length === 0) {
       showToast("None of the selected creators have an email on file.", false);
       return;
     }
-    const subject = `Curious Media × ${category}`;
-    const url = `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(bcc.join(","))}&su=${encodeURIComponent(subject)}`;
-    window.open(url, "_blank");
-    if (!downloaded) {
-      showToast("Tip: download the deck first so you have the file ready to attach.", true);
+    setSending(true);
+    try {
+      const base64 = await buildPptx("base64");
+      const fileName = `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx`;
+      const { error } = await supabase.functions.invoke("send-acquisition-mail", {
+        body: {
+          bcc,
+          subject,
+          html: introMessage.replace(/\n/g, "<br/>"),
+          attachments: [{ filename: fileName, content: base64 }],
+        },
+      });
+      if (error) throw error;
+      showToast(`Sent to ${bcc.length} creator${bcc.length === 1 ? "" : "s"}, deck attached.`, true);
+      onClose();
+    } catch (err) {
+      console.error("Failed to send deck mail:", err);
+      showToast(err.message || "Failed to send — check the send-acquisition-mail function logs.", false);
+    } finally {
+      setSending(false);
     }
   }
 
@@ -153,13 +213,25 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     <Modal open={open} onClose={onClose} title="Forward Mail — Deck" maxWidth={720}>
       <div className="flex flex-col gap-3 p-1">
         <div className="text-[12px]" style={{ color: "var(--ink3)" }}>
-          {recipients.length} creator{recipients.length === 1 ? "" : "s"} selected · {slides.length} slides. Pick a deck, edit
-          any slide (text and image), download it, then open mail with everyone in BCC and attach the file yourself.
+          {recipients.length} creator{recipients.length === 1 ? "" : "s"} selected · {slides.length} slides. Edit the deck,
+          then send — it goes out with the deck already attached.
         </div>
 
         <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            Template
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+              Template
+            </div>
+            <button
+              type="button"
+              onClick={handleResetToDefault}
+              className="flex items-center gap-1 text-[11px]"
+              style={{ color: "var(--ink3)" }}
+              title="Discard your edits and restore the default template for this category"
+            >
+              <RotateCcw size={11} />
+              Reset to default
+            </button>
           </div>
           <select
             value={category}
@@ -273,6 +345,33 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
           </div>
         )}
 
+        <hr style={{ borderColor: "var(--ln)" }} />
+
+        <div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+            Email subject
+          </div>
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="w-full rounded-[8px] border px-2.5 py-1.5 text-[13px]"
+            style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
+          />
+        </div>
+
+        <div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+            Email message (the deck is attached automatically)
+          </div>
+          <textarea
+            value={introMessage}
+            onChange={(e) => setIntroMessage(e.target.value)}
+            rows={6}
+            className="w-full rounded-[8px] border px-2.5 py-1.5 text-[13px] leading-relaxed"
+            style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
+          />
+        </div>
+
         <div className="mt-2 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-[8px] border px-3 py-2 text-[13px]" style={{ borderColor: "var(--ln)" }}>
             Close
@@ -280,20 +379,22 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
           <button
             type="button"
             onClick={handleDownload}
-            className="flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[13px] font-medium"
+            disabled={downloading}
+            className="flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[13px] font-medium disabled:opacity-60"
             style={{ borderColor: "var(--am)", color: "var(--am)" }}
           >
             <Download size={13} />
-            Download Deck (.pptx)
+            {downloading ? "Building…" : "Download Deck (.pptx)"}
           </button>
           <button
             type="button"
-            onClick={handleOpenMail}
-            className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium text-white"
+            onClick={handleSend}
+            disabled={sending}
+            className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium text-white disabled:opacity-60"
             style={{ background: "var(--am)" }}
           >
-            <Mail size={13} />
-            Open Mail (BCC filled)
+            <Send size={13} />
+            {sending ? "Sending…" : "Send (deck attached)"}
           </button>
         </div>
       </div>
