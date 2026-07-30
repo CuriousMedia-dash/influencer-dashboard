@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Upload, FileText, AlertCircle, CheckCircle2, Link2, RefreshCw, Unlink } from "lucide-react";
 import Modal from "../ui/Modal";
 import { parseAcquisitionCsv } from "../../utils/acquisitionCsvImport";
+import { excelFileToCsv, isExcelFile } from "../../utils/xlsxImport";
 import { fetchSheetCsv, normaliseSheetUrl } from "../../utils/sheetSync";
 import { getSavedAcquisitionSheetLink, saveAcquisitionSheetLink, clearAcquisitionSheetLink } from "../../utils/acquisitionSheetLink";
 import { useAcquisitionCreators } from "../../hooks/useAcquisitionCreators";
@@ -69,7 +70,7 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
 
     let text;
     try {
-      text = await file.text();
+      text = isExcelFile(file) ? await excelFileToCsv(file) : await file.text();
     } catch (err) {
       setErrors([{ message: `Couldn't read that file: ${err.message || "unknown error"}` }]);
       return;
@@ -142,6 +143,7 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
           <div className="flex flex-col gap-3">
             <div className="text-[12px]" style={{ color: "var(--ink3)" }}>
               Adds new creators and updates existing ones (matched by email, or by name + link). Never deletes anything.
+              Accepts .csv, .xlsx, or .xls.
             </div>
 
             <label
@@ -150,9 +152,9 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
             >
               <FileText size={20} style={{ color: "var(--ink3)" }} />
               <span className="text-[12px]" style={{ color: "var(--ink2)" }}>
-                {fileName || "Click to choose a .csv file"}
+                {fileName || "Click to choose a .csv or .xlsx file"}
               </span>
-              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
             </label>
 
             {errors.length > 0 && (
