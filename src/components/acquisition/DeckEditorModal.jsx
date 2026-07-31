@@ -176,20 +176,37 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     }
   }
 
-  function handleOpenOutlook() {
-    const bcc = recipients.map((r) => r.email).filter(Boolean);
-    if (bcc.length === 0) {
+  const bccList = recipients.map((r) => r.email).filter(Boolean);
+  const bccText = bccList.join("; ");
+
+  async function handleCopyEmails() {
+    if (bccList.length === 0) {
       showToast("None of the selected creators have an email on file.", false);
       return;
     }
+    try {
+      await navigator.clipboard.writeText(bccText);
+      showToast(`Copied ${bccList.length} email${bccList.length === 1 ? "" : "s"}.`, true);
+    } catch (err) {
+      showToast("Couldn't copy automatically — select the text in the box above and copy it manually (Ctrl+C).", false);
+    }
+  }
+
+  function handleOpenOutlook() {
+    if (bccList.length === 0) {
+      showToast("None of the selected creators have an email on file.", false);
+      return;
+    }
+    // Outlook's office.com web deeplink doesn't reliably honor its own
+    // bcc param — mailto: is the actual standard for this and every
+    // mail client (Outlook desktop or web, if set as your system's
+    // default mail handler) fills Bcc from it correctly.
     const url =
-      `https://outlook.office.com/mail/deeplink/compose?bcc=${encodeURIComponent(bcc.join(","))}` +
+      `mailto:?bcc=${encodeURIComponent(bccList.join(","))}` +
       `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(introMessage)}`;
-    window.open(url, "_blank");
+    window.location.href = url;
     if (!downloaded) {
-      showToast("Tip: download the deck first, then drag it into the Outlook window that opened.", true);
-    } else {
-      showToast("Attach the downloaded deck in the Outlook window that opened, then send.", true);
+      showToast("Opening your mail app — download the deck too so you can attach it there.", true);
     }
   }
 
@@ -347,7 +364,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
 
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            Email message (the deck is attached automatically)
+            Email message (download the deck separately and attach it in Outlook)
           </div>
           <textarea
             value={introMessage}
@@ -355,6 +372,25 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
             rows={6}
             className="w-full rounded-[8px] border px-2.5 py-1.5 text-[13px] leading-relaxed"
             style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
+          />
+        </div>
+
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+              Recipient emails ({bccList.length}) — for Bcc
+            </div>
+            <button type="button" onClick={handleCopyEmails} className="text-[11px] font-medium" style={{ color: "var(--am)" }}>
+              Copy
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={bccText}
+            onFocus={(e) => e.target.select()}
+            rows={2}
+            className="w-full rounded-[8px] border px-2.5 py-1.5 text-[12px] leading-relaxed"
+            style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
           />
         </div>
 
@@ -379,7 +415,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
             style={{ background: "var(--am)" }}
           >
             <Send size={13} />
-            Open Outlook (BCC filled)
+            Open Mail (Bcc auto-filled)
           </button>
         </div>
       </div>
