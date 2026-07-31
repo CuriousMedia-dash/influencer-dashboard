@@ -120,7 +120,7 @@ function CreatorsTabContent() {
         </main>
       </div>
 
-      <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} />
+      {mailOpen && <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} />}
     </>
   );
 }

@@ -1,28 +1,32 @@
-// Separate localStorage key from the Influencer Marketing module's
-// linked sheet — the two modules aren't interconnected.
-const STORAGE_KEY = "acquisition_master_sheet";
+// Separate saved master-sheet link per resource (creators vs
+// influencers) and separate again from the Influencer Marketing
+// module's linked sheet — none of these should collide.
 
-export function getSavedAcquisitionSheetLink() {
+function storageKey(kind) {
+  return `acquisition_master_sheet_${kind}`;
+}
+
+export function getSavedAcquisitionSheetLink(kind) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(kind));
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-export function saveAcquisitionSheetLink({ url, lastSyncedAt }) {
+export function saveAcquisitionSheetLink(kind, { url, lastSyncedAt }) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ url, lastSyncedAt }));
+    localStorage.setItem(storageKey(kind), JSON.stringify({ url, lastSyncedAt }));
   } catch {
     // Private browsing / storage disabled — sync still works for this
     // session, it just won't be remembered next time.
   }
 }
 
-export function clearAcquisitionSheetLink() {
+export function clearAcquisitionSheetLink(kind) {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(kind));
   } catch {
     // no-op
   }

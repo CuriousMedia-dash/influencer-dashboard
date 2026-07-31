@@ -5,7 +5,7 @@ import { parseAcquisitionCsv } from "../../utils/acquisitionCsvImport";
 import { excelFileToCsv, isExcelFile } from "../../utils/xlsxImport";
 import { fetchSheetCsv, normaliseSheetUrl } from "../../utils/sheetSync";
 import { getSavedAcquisitionSheetLink, saveAcquisitionSheetLink, clearAcquisitionSheetLink } from "../../utils/acquisitionSheetLink";
-import { useAcquisitionCreators } from "../../hooks/useAcquisitionCreators";
+import { useAcquisitionRecords } from "../../hooks/useAcquisitionRecords";
 import { useToast } from "../../hooks/useToast";
 import { timeAgo } from "../../utils/format";
 
@@ -32,8 +32,8 @@ function TabButton({ active, onClick, icon, label }) {
 // Creator Acquisition's own upload modal — mastersheet (linked Google
 // Sheet) + CSV, mirroring the same two properties, per spec. Both
 // dedupe/add-or-update via bulkImportCreators; neither ever deletes rows.
-export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
-  const { bulkImportCreators } = useAcquisitionCreators();
+export default function ImportAcquisitionCreatorsModal({ open, onClose, kind = "creators" }) {
+  const { bulkImport } = useAcquisitionRecords(kind);
   const showToast = useToast();
   const fileRef = useRef(null);
 
@@ -46,7 +46,7 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
   const [importing, setImporting] = useState(false);
 
   // ── Master sheet tab state ──
-  const [sheetLink, setSheetLink] = useState(() => getSavedAcquisitionSheetLink());
+  const [sheetLink, setSheetLink] = useState(() => getSavedAcquisitionSheetLink(kind));
   const [linkInput, setLinkInput] = useState("");
   const [linkError, setLinkError] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -89,7 +89,7 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
     if (!rows) return;
     setImporting(true);
     try {
-      const { added, updated } = await bulkImportCreators(rows);
+      const { added, updated } = await bulkImport(rows);
       showToast(`Imported: ${added} added, ${updated} updated.`, true);
       handleClose();
     } catch (err) {
@@ -111,9 +111,9 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
       if (parsedRows.length === 0) {
         throw new Error(parseErrors[0]?.message || "No usable rows found in that sheet.");
       }
-      const { added, updated } = await bulkImportCreators(parsedRows);
+      const { added, updated } = await bulkImport(parsedRows);
       const link = { url: rawUrl, lastSyncedAt: new Date().toISOString() };
-      saveAcquisitionSheetLink(link);
+      saveAcquisitionSheetLink(kind, link);
       setSheetLink(link);
       setEditingLink(false);
       showToast(`Synced: ${added} added, ${updated} updated.`, true);
@@ -125,7 +125,7 @@ export default function ImportAcquisitionCreatorsModal({ open, onClose }) {
   }
 
   function handleUnlink() {
-    clearAcquisitionSheetLink();
+    clearAcquisitionSheetLink(kind);
     setSheetLink(null);
     setLinkInput("");
     setEditingLink(true);

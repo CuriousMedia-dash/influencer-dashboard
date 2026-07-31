@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, Send, ImagePlus, X, RotateCcw } from "lucide-react";
 import Modal from "../ui/Modal";
-import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
 import { buildDefaultDecks, DECK_BG, DECK_ACCENT } from "../../utils/acquisitionDeckTemplates";
 import { getSavedDeckSlides, saveDeckSlides, clearSavedDeckSlides } from "../../utils/acquisitionDeckStorage";
@@ -74,7 +73,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const [subject, setSubject] = useState(`Curious Media × ${majorityCategory}`);
   const [introMessage, setIntroMessage] = useState(DEFAULT_INTRO);
-  const [sending, setSending] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   function handleCategoryChange(cat) {
@@ -121,7 +120,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
   // Builds the .pptx in-browser. `outputType` controls whether it triggers
   // a file download (for the "Download" button) or hands back the raw
   // bytes to attach to an outgoing email (for "Send").
-  async function buildPptx(outputType) {
+  async function buildPptx() {
     let PptxGenJS;
     try {
       ({ default: PptxGenJS } = await import("pptxgenjs"));
@@ -161,18 +160,15 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       }
     });
 
-    if (outputType === "download") {
-      await pptx.writeFile({ fileName: `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx` });
-      return null;
-    }
-    // base64, no data: prefix — what Resend's attachments API expects
-    return pptx.write({ outputType: "base64" });
+    await pptx.writeFile({ fileName: `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx` });
   }
 
   async function handleDownload() {
     setDownloading(true);
     try {
-      await buildPptx("download");
+      await buildPptx();
+      setDownloaded(true);
+      showToast("Deck downloaded — attach it in Outlook once it opens.", true);
     } catch (err) {
       showToast(err.message || "Couldn't build the deck.", false);
     } finally {
@@ -180,46 +176,20 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     }
   }
 
-  async function handleSend() {
+  function handleOpenOutlook() {
     const bcc = recipients.map((r) => r.email).filter(Boolean);
     if (bcc.length === 0) {
       showToast("None of the selected creators have an email on file.", false);
       return;
     }
-    setSending(true);
-    try {
-      const base64 = await buildPptx("base64");
-      const fileName = `${category.replace(/[/\s]+/g, "-").toLowerCase()}-outreach-deck.pptx`;
-      const { error } = await supabase.functions.invoke("send-acquisition-mail", {
-        body: {
-          bcc,
-          subject,
-          html: introMessage.replace(/\n/g, "<br/>"),
-          attachments: [{ filename: fileName, content: base64 }],
-        },
-      });
-      if (error) {
-        // supabase-js only gives a generic "non-2xx" message by default —
-        // the actual reason (e.g. Resend's validation error) is in the
-        // response body, so pull that out for a useful toast instead.
-        let detail = error.message;
-        try {
-          if (error.context && typeof error.context.json === "function") {
-            const body = await error.context.json();
-            detail = typeof body?.error === "string" ? body.error : JSON.stringify(body?.error ?? body);
-          }
-        } catch {
-          // fall back to error.message above
-        }
-        throw new Error(detail);
-      }
-      showToast(`Sent to ${bcc.length} creator${bcc.length === 1 ? "" : "s"}, deck attached.`, true);
-      onClose();
-    } catch (err) {
-      console.error("Failed to send deck mail:", err);
-      showToast(err.message || "Failed to send — check the send-acquisition-mail function logs.", false);
-    } finally {
-      setSending(false);
+    const url =
+      `https://outlook.office.com/mail/deeplink/compose?bcc=${encodeURIComponent(bcc.join(";"))}` +
+      `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(introMessage)}`;
+    window.open(url, "_blank");
+    if (!downloaded) {
+      showToast("Tip: download the deck first, then drag it into the Outlook window that opened.", true);
+    } else {
+      showToast("Attach the downloaded deck in the Outlook window that opened, then send.", true);
     }
   }
 
@@ -230,7 +200,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       <div className="flex flex-col gap-3 p-1">
         <div className="text-[12px]" style={{ color: "var(--ink3)" }}>
           {recipients.length} creator{recipients.length === 1 ? "" : "s"} selected · {slides.length} slides. Edit the deck,
-          then send — it goes out with the deck already attached.
+          then download it and open Outlook — attach the file there and send from your own account.
         </div>
 
         <div>
@@ -404,13 +374,12 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
           </button>
           <button
             type="button"
-            onClick={handleSend}
-            disabled={sending}
-            className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium text-white disabled:opacity-60"
+            onClick={handleOpenOutlook}
+            className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium text-white"
             style={{ background: "var(--am)" }}
           >
             <Send size={13} />
-            {sending ? "Sending…" : "Send (deck attached)"}
+            Open Outlook (BCC filled)
           </button>
         </div>
       </div>

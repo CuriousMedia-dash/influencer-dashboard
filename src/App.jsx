@@ -14,7 +14,7 @@ import { useBrandAuth } from "./hooks/useBrandAuth";
 
 import Workspace from "./pages/Workspace";
 import CreatorAcquisitionWorkspace from "./pages/CreatorAcquisitionWorkspace";
-import { AcquisitionCreatorsProvider } from "./context/AcquisitionCreatorsContext";
+import { AcquisitionRecordsProvider } from "./context/AcquisitionRecordsContext";
 import SharedCampaignView from "./pages/SharedCampaignView";
 import BrandDashboard from "./pages/BrandDashboard";
 import Login from "./pages/Login";
@@ -142,6 +142,11 @@ export default function App() {
     }
   });
 
+  // Which sub-tab (Creators vs Influencers) is active within Creator
+  // Acquisition — lifted up here (not just local to the page) so the
+  // header's upload button knows which table to import into.
+  const [acquisitionTab, setAcquisitionTab] = useState("creators");
+
   function handleModuleChange(next) {
     setActiveModule(next);
     try {
@@ -199,14 +204,21 @@ export default function App() {
                     element={
                       <AuthGate>
                         {activeModule === "acquisition" ? (
-                          <AcquisitionCreatorsProvider>
-                            <Layout activeModule={activeModule} onModuleChange={handleModuleChange}>
+                          <AcquisitionRecordsProvider>
+                            <Layout
+                              activeModule={activeModule}
+                              onModuleChange={handleModuleChange}
+                              acquisitionTab={acquisitionTab}
+                            >
                               <Routes>
-                                <Route path="/" element={<CreatorAcquisitionWorkspace />} />
+                                <Route
+                                  path="/"
+                                  element={<CreatorAcquisitionWorkspace tab={acquisitionTab} onTabChange={setAcquisitionTab} />}
+                                />
                                 <Route path="/campaigns/:id" element={<Workspace />} />
                               </Routes>
                             </Layout>
-                          </AcquisitionCreatorsProvider>
+                          </AcquisitionRecordsProvider>
                         ) : (
                           <Layout activeModule={activeModule} onModuleChange={handleModuleChange}>
                             <Routes>

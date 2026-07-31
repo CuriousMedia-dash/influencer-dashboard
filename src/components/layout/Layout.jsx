@@ -3,7 +3,7 @@ import Header from "./Header";
 import ImportCreatorsModal from "../ui/ImportCreatorsModal";
 import ImportAcquisitionCreatorsModal from "../acquisition/ImportAcquisitionCreatorsModal";
 
-export default function Layout({ children, activeModule, onModuleChange }) {
+export default function Layout({ children, activeModule, onModuleChange, acquisitionTab }) {
   const [importOpen, setImportOpen] = useState(false);
   const [acquisitionImportOpen, setAcquisitionImportOpen] = useState(false);
 
@@ -17,8 +17,12 @@ export default function Layout({ children, activeModule, onModuleChange }) {
       />
       <main className="min-w-0 flex-1 overflow-x-hidden p-6">{children}</main>
       {activeModule !== "acquisition" && <ImportCreatorsModal open={importOpen} onClose={() => setImportOpen(false)} />}
-      {activeModule === "acquisition" && (
-        <ImportAcquisitionCreatorsModal open={acquisitionImportOpen} onClose={() => setAcquisitionImportOpen(false)} />
+      {activeModule === "acquisition" && acquisitionImportOpen && (
+        <ImportAcquisitionCreatorsModal
+          open={acquisitionImportOpen}
+          onClose={() => setAcquisitionImportOpen(false)}
+          kind={acquisitionTab}
+        />
       )}
     </div>
   );

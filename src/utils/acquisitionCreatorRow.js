@@ -1,6 +1,6 @@
-// Shared row <-> app-shape mapping for the `acquisition_creators` table.
-// Mirrors the pattern in utils/creatorRow.js, kept separate on purpose —
-// this module isn't interconnected with the Influencer Marketing schema.
+// Shared row <-> app-shape mapping for both acquisition_creators and
+// acquisition_influencers — they're identical schemas, just different
+// tables (see acquisitionRecordsConfig.js), so one mapper covers both.
 
 export const ACQ_CREATOR_FIELD_MAP = {
   name: "name",
@@ -20,6 +20,12 @@ export const ACQ_CREATOR_FIELD_MAP = {
   handoverToSmm: "handover_to_smm",
   marketingReport: "marketing_report",
   status: "status",
+  stakeholder: "stakeholder",
+  stakeholderEmail: "stakeholder_email",
+  claimedAt: "claimed_at",
+  remark1: "remark1",
+  remark2: "remark2",
+  remark3: "remark3",
 };
 
 export function acqCreatorFromRow(row) {
@@ -42,6 +48,12 @@ export function acqCreatorFromRow(row) {
     handoverToSmm: row.handover_to_smm || false,
     marketingReport: row.marketing_report || "",
     status: row.status || "",
+    stakeholder: row.stakeholder || "",
+    stakeholderEmail: row.stakeholder_email || "",
+    claimedAt: row.claimed_at || null,
+    remark1: row.remark1 || "",
+    remark2: row.remark2 || "",
+    remark3: row.remark3 || "",
     createdAt: row.created_at || null,
     deletedAt: row.deleted_at || null,
   };
