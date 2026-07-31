@@ -183,7 +183,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       return;
     }
     const url =
-      `https://outlook.office.com/mail/deeplink/compose?bcc=${encodeURIComponent(bcc.join(";"))}` +
+      `https://outlook.office.com/mail/deeplink/compose?bcc=${encodeURIComponent(bcc.join(","))}` +
       `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(introMessage)}`;
     window.open(url, "_blank");
     if (!downloaded) {
