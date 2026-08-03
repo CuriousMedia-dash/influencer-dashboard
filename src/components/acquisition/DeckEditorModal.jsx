@@ -156,7 +156,8 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       });
 
       if (slide.image) {
-        pSlide.addImage({ data: slide.image, x: 6.2, y: 0, w: 3.8, h: 5.63 });
+        const imgProp = slide.image.startsWith("data:") ? { data: slide.image } : { path: slide.image };
+        pSlide.addImage({ ...imgProp, x: 6.2, y: 0, w: 3.8, h: 5.63 });
       }
     });
 
