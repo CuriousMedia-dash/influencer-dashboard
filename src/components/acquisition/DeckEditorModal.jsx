@@ -122,9 +122,9 @@ function SlidePreview({ slide, isLast }) {
 const DEFAULT_INTRO =
   "Hi,\n\nGreat to connect — please find our deck attached, covering what we do and the results we've driven for creators like you.\n\nWould love to set up a quick call if this looks interesting.\n\nBest,\nCurious Media";
 
-export default function DeckEditorModal({ open, onClose, recipients }) {
+export default function DeckEditorModal({ open, onClose, recipients, categories }) {
   const showToast = useToast();
-  const decks = useMemo(() => buildDefaultDecks(), []);
+  const decks = useMemo(() => buildDefaultDecks(categories), [categories]);
 
   const majorityCategory = useMemo(() => {
     const counts = {};
@@ -170,8 +170,6 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     showToast("Reset to the default template for this category.", true);
   }
 
-  // Every edit — text or image — is saved immediately, so it's still
-  // there next time this category is opened, until reset above.
   useEffect(() => {
     saveDeckSlides(category, slides);
   }, [category, slides]);
@@ -190,9 +188,6 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
 
   const currentSlide = slides[slideIndex];
 
-  // Builds the .pptx in-browser. `outputType` controls whether it triggers
-  // a file download (for the "Download" button) or hands back the raw
-  // bytes to attach to an outgoing email (for "Send").
   async function buildPptx() {
     let PptxGenJS;
     try {
@@ -290,7 +285,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     try {
       await buildPptx();
       setDownloaded(true);
-      showToast("Deck downloaded — attach it in Outlook once it opens.", true);
+      showToast("Deck downloaded — attach it in your mail app once it opens.", true);
     } catch (err) {
       showToast(err.message || "Couldn't build the deck.", false);
     } finally {
@@ -309,20 +304,16 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
     try {
       await navigator.clipboard.writeText(bccText);
       showToast(`Copied ${bccList.length} email${bccList.length === 1 ? "" : "s"}.`, true);
-    } catch (err) {
+    } catch {
       showToast("Couldn't copy automatically — select the text in the box above and copy it manually (Ctrl+C).", false);
     }
   }
 
-  function handleOpenOutlook() {
+  function handleOpenMail() {
     if (bccList.length === 0) {
       showToast("None of the selected creators have an email on file.", false);
       return;
     }
-    // Outlook's office.com web deeplink doesn't reliably honor its own
-    // bcc param — mailto: is the actual standard for this and every
-    // mail client (Outlook desktop or web, if set as your system's
-    // default mail handler) fills Bcc from it correctly.
     const url =
       `mailto:?bcc=${encodeURIComponent(bccList.join(","))}` +
       `&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(introMessage)}`;
@@ -339,7 +330,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
       <div className="flex flex-col gap-3 p-1">
         <div className="text-[12px]" style={{ color: "var(--ink3)" }}>
           {recipients.length} creator{recipients.length === 1 ? "" : "s"} selected · {slides.length} slides. Edit the deck,
-          then download it and open Outlook — attach the file there and send from your own account.
+          then download it and open your mail app — attach the file there and send from your own account.
         </div>
 
         <div>
@@ -486,7 +477,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
 
         <div>
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            Email message (download the deck separately and attach it in Outlook)
+            Email message (download the deck separately and attach it in your mail app)
           </div>
           <textarea
             value={introMessage}
@@ -532,7 +523,7 @@ export default function DeckEditorModal({ open, onClose, recipients }) {
           </button>
           <button
             type="button"
-            onClick={handleOpenOutlook}
+            onClick={handleOpenMail}
             className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium text-white"
             style={{ background: "var(--am)" }}
           >

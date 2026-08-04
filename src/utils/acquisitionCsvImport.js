@@ -32,7 +32,9 @@ const HEADER_MAP = {
   category: "category",
   niche: "category",
 
+  "lead quality": "executionStage",
   "execution stage": "executionStage",
+  quality: "executionStage",
   stage: "executionStage",
 
   convert: "convert",
@@ -63,11 +65,10 @@ const HEADER_MAP = {
   remarks: "status",
 };
 
-const EXECUTION_STAGE_INPUT_MAP = {
-  "reached out": "reached_out",
-  "meet responsive": "meet_responsive",
-  "contract sign": "contract_sign",
-  "marketing budget received": "marketing_budget_received",
+const LEAD_QUALITY_INPUT_MAP = {
+  hot: "hot",
+  mild: "mild",
+  low: "low",
 };
 
 const MB_STATUS_INPUT_MAP = {
@@ -180,7 +181,7 @@ export function parseAcquisitionCsv(csvText) {
       email: (row.email || "").trim(),
       phone: (row.phone || "").trim(),
       category: (row.category || "").trim(),
-      executionStage: EXECUTION_STAGE_INPUT_MAP[String(row.executionStage || "").trim().toLowerCase()] || "reached_out",
+      executionStage: LEAD_QUALITY_INPUT_MAP[String(row.executionStage || "").trim().toLowerCase()] || null,
       convert: normaliseYesNo(row.convert),
       marketingBudget: row.marketingBudget ? row.marketingBudget.replace(/,/g, "") : null,
       mb1Status: MB_STATUS_INPUT_MAP[String(row.mb1Status || "").trim().toLowerCase()] || null,

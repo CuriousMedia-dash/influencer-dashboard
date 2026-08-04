@@ -1,6 +1,6 @@
 // Creators (YouTube) and Influencers (Instagram) are separate data sets
-// with an identical schema — this is the one place that says which
-// table and which words ("Subscribers" vs "Followers") go with which.
+// with mostly-identical schemas — this is the one place that says which
+// table, categories, and labels go with which.
 
 export const ACQUISITION_RESOURCES = {
   creators: {
@@ -8,11 +8,59 @@ export const ACQUISITION_RESOURCES = {
     label: "Creators",
     platform: "YouTube",
     countLabel: "Subscribers",
+    handoverLabel: "Handover to SMM",
+    hasMarketingBudget: true,
+    categories: [
+      "Fiction",
+      "Non-Fiction",
+      "Animation",
+      "Roasting",
+      "Podcast",
+      "News",
+      "Informative",
+      "Devotional",
+      "Edgy",
+    ],
+    categoryColors: {
+      Fiction: "#6E5BD6",
+      "Non-Fiction": "#3F8FE0",
+      Animation: "#D6669B",
+      Roasting: "#E0524B",
+      Podcast: "#2BAE9E",
+      News: "#8FA3BC",
+      Informative: "#1E6FE0",
+      Devotional: "#E0A23B",
+      Edgy: "#B23BE0",
+    },
   },
   influencers: {
     table: "acquisition_influencers",
     label: "Influencers",
     platform: "Instagram",
     countLabel: "Followers",
+    handoverLabel: "Handover to Influencer Team",
+    hasMarketingBudget: false,
+    categories: [
+      "Beauty",
+      "Lifestyle",
+      "Fitness",
+      "Fashion",
+      "Tech",
+      "Review",
+      "Food",
+      "Devotional",
+      "Education",
+    ],
+    categoryColors: {
+      Beauty: "#D6669B",
+      Lifestyle: "#E0A23B",
+      Fitness: "#2BAE66",
+      Fashion: "#B23BE0",
+      Tech: "#3F8FE0",
+      Review: "#2BAE9E",
+      Food: "#E0524B",
+      Devotional: "#8FA3BC",
+      Education: "#1E6FE0",
+    },
   },
 };

@@ -1,6 +1,8 @@
 // Shared row <-> app-shape mapping for both acquisition_creators and
-// acquisition_influencers — they're identical schemas, just different
-// tables (see acquisitionRecordsConfig.js), so one mapper covers both.
+// acquisition_influencers. Influencers doesn't have the marketing-budget
+// columns (dropped in the migration) — the context layer strips those
+// fields before writing for that resource, so this mapper just ignores
+// whatever isn't present on a given row.
 
 export const ACQ_CREATOR_FIELD_MAP = {
   name: "name",
@@ -9,7 +11,7 @@ export const ACQ_CREATOR_FIELD_MAP = {
   email: "email",
   phone: "phone",
   category: "category",
-  executionStage: "execution_stage",
+  executionStage: "execution_stage", // now labeled "Lead Quality" in the UI
   convert: "convert",
   marketingBudget: "marketing_budget",
   mb1Status: "mb1_status",
@@ -26,6 +28,10 @@ export const ACQ_CREATOR_FIELD_MAP = {
   remark1: "remark1",
   remark2: "remark2",
   remark3: "remark3",
+  convertPdfUrl: "convert_pdf_url",
+  convertPdfName: "convert_pdf_name",
+  marketingReportCsvUrl: "marketing_report_csv_url",
+  marketingReportCsvName: "marketing_report_csv_name",
 };
 
 export function acqCreatorFromRow(row) {
@@ -37,7 +43,7 @@ export function acqCreatorFromRow(row) {
     email: row.email || "",
     phone: row.phone || "",
     category: row.category || "",
-    executionStage: row.execution_stage || "reached_out",
+    executionStage: row.execution_stage || "",
     convert: row.convert || false,
     marketingBudget: row.marketing_budget ?? "",
     mb1Status: row.mb1_status || "",
@@ -54,6 +60,10 @@ export function acqCreatorFromRow(row) {
     remark1: row.remark1 || "",
     remark2: row.remark2 || "",
     remark3: row.remark3 || "",
+    convertPdfUrl: row.convert_pdf_url || "",
+    convertPdfName: row.convert_pdf_name || "",
+    marketingReportCsvUrl: row.marketing_report_csv_url || "",
+    marketingReportCsvName: row.marketing_report_csv_name || "",
     createdAt: row.created_at || null,
     deletedAt: row.deleted_at || null,
   };
@@ -77,3 +87,7 @@ export function toAcqCreatorColumns(fields) {
   });
   return out;
 }
+
+// Fields that don't exist on acquisition_influencers at all (dropped in
+// the migration) — stripped before any insert/update for that resource.
+export const MARKETING_BUDGET_FIELDS = ["marketingBudget", "mb1Status", "mb2Status", "mb3Status"];

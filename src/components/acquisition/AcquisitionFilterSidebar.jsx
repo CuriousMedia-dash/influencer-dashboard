@@ -1,5 +1,4 @@
 import { Search } from "lucide-react";
-import { ACQ_CATEGORIES, ACQ_CATEGORY_COLORS } from "../../utils/acquisitionConstants";
 
 function ChipGroup({ values, colorMap, activeSet, onToggle }) {
   return (
@@ -103,7 +102,7 @@ function SubscriberRange({ value, onChange }) {
  * { search, subscriberRange: [min, max|null], categories: Set<string>, convert: "all"|"yes"|"no", handover: "all"|"yes"|"no" }
  * subscriberRange max of null means "no upper limit".
  */
-export default function AcquisitionFilterSidebar({ filters, onChange }) {
+export default function AcquisitionFilterSidebar({ filters, onChange, categories = [], categoryColors = {} }) {
   const toggleCategory = (cat) => {
     const next = new Set(filters.categories);
     if (next.has(cat)) next.delete(cat);
@@ -137,7 +136,7 @@ export default function AcquisitionFilterSidebar({ filters, onChange }) {
         <div className="fl mb-[9px] text-[11px] font-semibold uppercase tracking-[.07em]" style={{ color: "var(--ink3)" }}>
           Category
         </div>
-        <ChipGroup values={ACQ_CATEGORIES} colorMap={ACQ_CATEGORY_COLORS} activeSet={filters.categories} onToggle={toggleCategory} />
+        <ChipGroup values={categories} colorMap={categoryColors} activeSet={filters.categories} onToggle={toggleCategory} />
       </div>
 
       <TriToggle label="Converted" value={filters.convert} onChange={(v) => onChange({ ...filters, convert: v })} />

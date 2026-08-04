@@ -22,7 +22,8 @@ function ResourceTabContent({ kind }) {
   const { items, loading, updateRecord, deleteRecord, refresh } = useAcquisitionRecords(kind);
   const { user } = useAuth();
   const currentUserEmail = user?.email || "";
-  const countLabel = ACQUISITION_RESOURCES[kind].countLabel;
+  const resourceConfig = ACQUISITION_RESOURCES[kind];
+  const countLabel = resourceConfig.countLabel;
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -109,7 +110,7 @@ function ResourceTabContent({ kind }) {
       </div>
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-4">
-        <AcquisitionFilterSidebar filters={filters} onChange={setFilters} />
+        <AcquisitionFilterSidebar filters={filters} onChange={setFilters} categories={resourceConfig.categories} categoryColors={resourceConfig.categoryColors} />
 
         <main className="min-w-0">
           <div className="mb-2.5 flex items-center justify-between gap-2 rounded-[9px] border px-3 py-2 text-[12px]" style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}>
@@ -151,11 +152,16 @@ function ResourceTabContent({ kind }) {
             onDelete={deleteRecord}
             currentUserEmail={currentUserEmail}
             countLabel={countLabel}
+            categories={resourceConfig.categories}
+            categoryColors={resourceConfig.categoryColors}
+            handoverLabel={resourceConfig.handoverLabel}
+            hasMarketingBudget={resourceConfig.hasMarketingBudget}
+            resourceKind={kind}
           />
         </main>
       </div>
 
-      {mailOpen && <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} />}
+      {mailOpen && <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} categories={resourceConfig.categories} />}
     </>
   );
 }

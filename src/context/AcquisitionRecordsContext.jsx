@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AcquisitionRecordsContext } from "./acquisitionRecordsContextDef";
 import { supabase } from "../lib/supabaseClient";
-import { acqCreatorFromRow, toAcqCreatorColumns } from "../utils/acquisitionCreatorRow";
+import { acqCreatorFromRow, toAcqCreatorColumns, MARKETING_BUDGET_FIELDS } from "../utils/acquisitionCreatorRow";
 import { ACQUISITION_RESOURCES } from "../utils/acquisitionRecordsConfig";
 
 // One CRUD instance per resource (creators / influencers) — identical
 // logic, just pointed at a different table.
-function useResourceCrud(table) {
+function useResourceCrud(table, hasMarketingBudget) {
+  // Influencers has no marketing-budget columns at all — strip those
+  // fields before they ever reach a column-mapping/insert/update call.
+  function stripFields(fields) {
+    if (hasMarketingBudget) return fields;
+    const next = { ...fields };
+    MARKETING_BUDGET_FIELDS.forEach((f) => delete next[f]);
+    return next;
+  }
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,7 +44,7 @@ function useResourceCrud(table) {
 
   const addRecord = useCallback(async (fields) => {
     const { data: userData } = await supabase.auth.getUser();
-    const columns = toAcqCreatorColumns(fields);
+    const columns = toAcqCreatorColumns(stripFields(fields));
     const { data, error: err } = await supabase
       .from(table)
       .insert({ ...columns, created_by: userData?.user?.id })
@@ -51,7 +60,7 @@ function useResourceCrud(table) {
   }, [table]);
 
   const updateRecord = useCallback(async (id, fields) => {
-    const columns = toAcqCreatorColumns(fields);
+    const columns = toAcqCreatorColumns(stripFields(fields));
     setItems((prev) => prev.map((c) => (c.id === id ? { ...c, ...fields } : c)));
 
     const { error: err } = await supabase.from(table).update(columns).eq("id", id);
@@ -97,7 +106,7 @@ function useResourceCrud(table) {
 
     let insertedCount = 0;
     if (toInsert.length > 0) {
-      const columns = toInsert.map((r) => ({ ...toAcqCreatorColumns(r), created_by: userData?.user?.id }));
+      const columns = toInsert.map((r) => ({ ...toAcqCreatorColumns(stripFields(r)), created_by: userData?.user?.id }));
       const { error: err } = await supabase.from(table).insert(columns);
       if (err) {
         console.error(`Bulk insert failed for ${table}:`, err.message);
@@ -108,7 +117,7 @@ function useResourceCrud(table) {
 
     let updatedCount = 0;
     for (const { id, fields } of toUpdate) {
-      const { error: err } = await supabase.from(table).update(toAcqCreatorColumns(fields)).eq("id", id);
+      const { error: err } = await supabase.from(table).update(toAcqCreatorColumns(stripFields(fields))).eq("id", id);
       if (err) {
         console.error(`Bulk update failed for ${id} in ${table}:`, err.message);
         continue;
@@ -127,8 +136,8 @@ function useResourceCrud(table) {
 }
 
 export function AcquisitionRecordsProvider({ children }) {
-  const creators = useResourceCrud(ACQUISITION_RESOURCES.creators.table);
-  const influencers = useResourceCrud(ACQUISITION_RESOURCES.influencers.table);
+  const creators = useResourceCrud(ACQUISITION_RESOURCES.creators.table, ACQUISITION_RESOURCES.creators.hasMarketingBudget);
+  const influencers = useResourceCrud(ACQUISITION_RESOURCES.influencers.table, ACQUISITION_RESOURCES.influencers.hasMarketingBudget);
 
   const value = useMemo(() => ({ creators, influencers }), [creators, influencers]);
 

@@ -1,31 +1,40 @@
-// Editable slide-deck templates for the "Forward Mail" flow — rebuilt to
-// mirror the "Content Onboarding Deck" you shared slide-for-slide (15
-// slides, same order, same text, same photos — pulled directly from
-// that PDF and saved under public/deck-images/). The only thing that
-// differs between categories is the hook line on the cover slide.
-// Every field on every slide, including the images, is still editable
-// per-send.
+// Editable slide-deck templates for the "Forward Mail" flow — mirrors
+// the "Content Onboarding Deck" you shared slide-for-slide (15 slides,
+// same order, same text, same photos — pulled from that PDF and saved
+// under public/deck-images/). Each slide has a `layout` so it gets its
+// own visual treatment (cover, photo-beside-text, banner, etc.) rather
+// than one flat template. The only thing that differs between
+// categories is the hook line on the cover slide. Every field on every
+// slide, including images, is editable per-send.
 
-import { ACQ_CATEGORIES } from "./acquisitionConstants";
+// Categories are passed in now (Creators and Influencers have
+// different lists) rather than a single fixed import.
 
 export const DECK_BG = "#111111";
 export const DECK_ACCENT = "#F5A623"; // orange/yellow accent from the deck
 
 const CATEGORY_HOOKS = {
-  Comedy: "Your comedy content has exactly the shareability that performs best repurposed across pages.",
+  // Creators (YouTube)
   Fiction: "Your storytelling is a great fit for the audience we've built on our fiction-focused pages.",
-  Vlogs: "Your personality-led vlogs travel well when repurposed for short-form.",
-  "Shorts / Reels": "Your short-form content is exactly the format our audience engages with most.",
+  "Non-Fiction": "Your real-world content travels well when repurposed across our high-engagement pages.",
+  Animation: "Your animated content stands out and repurposes beautifully across short-form platforms.",
+  Roasting: "Your roasting/entertainment content has exactly the shareability that performs best repurposed.",
   Podcast: "Clipped and repurposed the right way, your podcast can reach a whole new audience.",
-  Regional: "We've had strong results growing regional-language pages with this exact strategy.",
-  International: "We've helped international creators tap into large new audiences without ad spend.",
-  "Production House": "We already partner with houses like TVF and Girliyapa — let's talk about you next.",
-  "Meme Page": "Meme and highlight-style content repurposes exceptionally well across our page network.",
+  News: "Your news content reaches a wider audience fast when distributed across our network.",
+  Informative: "Your informative content builds trust and repurposes well for a broader audience.",
+  Devotional: "Your devotional content resonates deeply and travels well across our community pages.",
+  Edgy: "Your bold, edgy content is exactly the kind that performs best repurposed across pages.",
+  // Influencers (Instagram)
+  Beauty: "Your beauty content is a strong fit for the brand partnerships we already run.",
+  Lifestyle: "Your lifestyle content resonates with the audiences we've built across our network.",
+  Fitness: "Your fitness content travels well and fits several of our existing brand partnerships.",
+  Fashion: "Your fashion content is exactly the kind of visual storytelling our partners look for.",
+  Tech: "Your tech content reaches a highly engaged, brand-relevant audience through our network.",
+  Review: "Your review content builds trust fast — exactly what our brand partners value most.",
+  Food: "Your food content has the shareability that performs best across our page network.",
+  Education: "Your education content builds long-term audience trust and travels well repurposed.",
 };
 
-// image is a /deck-images/*.jpg path pulled straight from your PDF —
-// still fully replaceable per-send in the deck editor. hasImage flags
-// which slides carried a photo/screenshot in the original deck.
 function buildDeckForCategory(category) {
   const hook = CATEGORY_HOOKS[category] || "";
   return {
@@ -59,7 +68,7 @@ function buildDeckForCategory(category) {
         id: "case-tvf",
         layout: "photo-side",
         overline: "HOW WE ARE CRACKING IT",
-        heading: "How We Are Cracking It — The Viral Fever (TVF)",
+        heading: "The Viral Fever (TVF)",
         body: "Under the expert management of Curious Media, TVF's Facebook page experienced a dramatic transformation, evolving from an inactive presence to one of the most dominant fiction pages in India. Within just 20 days, we scaled the monthly reach from 40 million to an astounding 250 million through data-driven strategies and targeted content planning. By analyzing audience behavior and optimizing content formats and posting schedules, we were able to organically grow the page's followership to over 300,000, while generating more than 90 million total views in the same period. This meteoric rise positioned TVF among the Top 5 fiction pages in India.",
         image: "/deck-images/case-tvf.jpg",
         hasImage: true,
@@ -68,7 +77,7 @@ function buildDeckForCategory(category) {
         id: "case-realshit",
         layout: "photo-side",
         overline: "HOW WE ARE CRACKING IT",
-        heading: "How We Are Cracking It — Realshit",
+        heading: "Realshit",
         body: "Before Us: Inconsistent uploads, unclear content strategy, low engagement & limited growth.\n\nAfter Curious Media Took Over: Streamlined content calendar with trending + value-driven topics, boosted production quality & audience retention, optimized SEO/thumbnails/publishing strategy, consistent growth in views, subscribers, and watch time.\n\nResult: 3x increase in monthly views, 5x growth in engagement, brand collaborations unlocked through improved channel performance.",
         image: "/deck-images/case-realshit.jpg",
         hasImage: true,
@@ -77,7 +86,7 @@ function buildDeckForCategory(category) {
         id: "case-oriental-perl",
         layout: "photo-side",
         overline: "HOW WE ARE CRACKING IT",
-        heading: "How We Are Cracking It — Oriental Perl",
+        heading: "Oriental Perl",
         body: "Oriental Perl is a standout success story that showcases Curious Media's ability to take a creator from zero visibility to global recognition. Starting with no existing Facebook presence, we developed a robust content and growth strategy tailored to the fast-paced, high-engagement dynamics of the roasting and entertainment niche. We scaled the page organically to over 100 million views — all without a single dollar spent on advertising — and built a thriving community of 500K+ followers across international audiences.",
         image: "/deck-images/case-oriental-perl.jpg",
         hasImage: true,
@@ -86,7 +95,7 @@ function buildDeckForCategory(category) {
         id: "case-hamzy",
         layout: "photo-side",
         overline: "HOW WE ARE CRACKING IT",
-        heading: "How We Are Cracking It — Hamzy",
+        heading: "Hamzy",
         body: "Hamzy's journey with Curious Media is a powerful example of how we help international creators tap into massive new audiences and revenue opportunities — without spending a single rupee on advertising. We strategically curated and repackaged existing YouTube videos into high-performance, platform-optimized formats, resulting in over 300 million total views, including a single video that reached 39 million views organically, and grew Hamzy's followership by over 500K.",
         image: "/deck-images/case-hamzy.jpg",
         hasImage: true,
@@ -160,6 +169,6 @@ function buildDeckForCategory(category) {
   };
 }
 
-export function buildDefaultDecks() {
-  return ACQ_CATEGORIES.map(buildDeckForCategory);
+export function buildDefaultDecks(categories) {
+  return categories.map(buildDeckForCategory);
 }
