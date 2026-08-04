@@ -51,8 +51,8 @@ function SlidePreview({ slide, isLast }) {
   const zones = ZONES[slide.layout] || ZONES["photo-side"];
   return (
     <div
-      className="relative aspect-video w-full overflow-hidden rounded-[10px]"
-      style={{ backgroundImage: `url(${slide.background})`, backgroundSize: "cover", backgroundPosition: "center" }}
+      className="relative w-full overflow-hidden rounded-[10px]"
+      style={{ aspectRatio: "16/9", backgroundImage: `url(${slide.background})`, backgroundSize: "cover", backgroundPosition: "center" }}
     >
       {slide.image && zones.photo && (
         <img
