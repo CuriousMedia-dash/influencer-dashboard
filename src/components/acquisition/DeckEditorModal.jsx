@@ -241,12 +241,17 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
     pptx.layout = "WIDE";
 
     function addImageProp(pSlide, image, opts) {
-      const imgProp = image.startsWith("data:") ? { data: image } : { path: image };
+      // pptxgenjs needs a fully-qualified URL to actually fetch and embed
+      // an image — a relative path like "/deck-images/..." silently
+      // fails, which is exactly what produced the all-white deck.
+      const resolved = image.startsWith("data:") || image.startsWith("http") ? image : window.location.origin + image;
+      const imgProp = resolved.startsWith("data:") ? { data: resolved } : { path: resolved };
       pSlide.addImage({ ...imgProp, ...opts });
     }
 
     slides.forEach((slide, i) => {
       const pSlide = pptx.addSlide();
+      pSlide.background = { color: "111111" }; // fallback if the background image fails to load for any reason
       const isLastSlide = i === slides.length - 1;
       const zones = ZONES[slide.layout] || ZONES["photo-side"];
 
