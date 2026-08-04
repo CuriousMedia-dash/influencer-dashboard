@@ -260,13 +260,14 @@ export default function AcquisitionCreatorsTable({
                   {locked ? <Blank /> : <EditableCell value={r.remark3} label="Remark 3" onSave={(v) => onUpdate(r.id, { remark3: v })} />}
                 </td>
 
-                {/* Lead Quality, Convert, and Status stay visible & editable to everyone, regardless of lock. */}
+                {/* Lead Quality: visible to everyone, but only the stakeholder can edit it once claimed. */}
                 <td className={td}>
                   <Select
                     value={r.executionStage}
                     options={ACQ_LEAD_QUALITY}
                     labels={ACQ_LEAD_QUALITY_LABELS}
                     colorMap={ACQ_LEAD_QUALITY_COLORS}
+                    disabled={locked}
                     onChange={(v) => onUpdate(r.id, { executionStage: v })}
                   />
                 </td>
@@ -343,21 +344,20 @@ export default function AcquisitionCreatorsTable({
                   {locked ? <Blank /> : <YesNoToggle value={r.handoverToSmm} onChange={(v) => onUpdate(r.id, { handoverToSmm: v })} />}
                 </td>
                 <td className={td}>
-                  <div className="flex items-center gap-1.5">
-                    {locked ? <Blank /> : <EditableCell value={r.marketingReport} label="Marketing report" onSave={(v) => onUpdate(r.id, { marketingReport: v })} />}
-                    {!locked && (
-                      <AttachButton
-                        kind={resourceKind}
-                        recordId={r.id}
-                        field="marketingReportCsv"
-                        accept=".csv"
-                        fileUrl={r.marketingReportCsvUrl}
-                        fileName={r.marketingReportCsvName}
-                        label="CSV"
-                        onAttached={(url, name) => onUpdate(r.id, { marketingReportCsvUrl: url, marketingReportCsvName: name })}
-                      />
-                    )}
-                  </div>
+                  {locked ? (
+                    <Blank />
+                  ) : (
+                    <AttachButton
+                      kind={resourceKind}
+                      recordId={r.id}
+                      field="marketingReportCsv"
+                      accept=".csv"
+                      fileUrl={r.marketingReportCsvUrl}
+                      fileName={r.marketingReportCsvName}
+                      label="CSV"
+                      onAttached={(url, name) => onUpdate(r.id, { marketingReportCsvUrl: url, marketingReportCsvName: name })}
+                    />
+                  )}
                 </td>
 
                 {/* Status stays visible & editable to everyone. */}
