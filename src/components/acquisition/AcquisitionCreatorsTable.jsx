@@ -113,17 +113,28 @@ function AttachButton({ kind, recordId, field, accept, fileUrl, fileName, onAtta
           <span className="truncate">{fileName || "File"}</span>
         </a>
       ) : (
-        <span style={{ color: "var(--ink3)" }}>—</span>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-1 text-[11px] font-medium"
+          style={{ color: "var(--am)" }}
+        >
+          {uploading ? <Loader2 size={11} className="animate-spin" /> : <Paperclip size={11} />}
+          Add {label}
+        </button>
       )}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        title={fileUrl ? `Replace ${label}` : `Attach ${label}`}
-        disabled={uploading}
-        style={{ color: "var(--ink3)" }}
-      >
-        {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
-      </button>
+      {fileUrl && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          title={`Replace ${label}`}
+          disabled={uploading}
+          style={{ color: "var(--ink3)" }}
+        >
+          {uploading ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+        </button>
+      )}
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
     </div>
   );

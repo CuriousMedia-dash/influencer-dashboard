@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Send, ImagePlus, X, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Send, ImagePlus, X, RotateCcw, Sparkles, Loader2 } from "lucide-react";
 import Modal from "../ui/Modal";
+import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
 import { buildDefaultDecks, DECK_BG, DECK_ACCENT } from "../../utils/acquisitionDeckTemplates";
 import { getSavedDeckSlides, saveDeckSlides, clearSavedDeckSlides } from "../../utils/acquisitionDeckStorage";
@@ -187,6 +188,57 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
   }
 
   const currentSlide = slides[slideIndex];
+
+  // ── AI: reframe heading/body text (Gemini via edge function) ──
+  const [reframing, setReframing] = useState(null); // "heading" | "body" | null
+  const [reframeSuggestion, setReframeSuggestion] = useState(null); // { field, text } | null
+
+  useEffect(() => {
+    setReframeSuggestion(null);
+  }, [slideIndex, category]);
+
+  async function handleReframe(field) {
+    const text = currentSlide[field];
+    if (!text || !text.trim()) return;
+    setReframing(field);
+    setReframeSuggestion(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("reframe-text", {
+        body: { text, fieldType: field },
+      });
+      if (error) throw error;
+      setReframeSuggestion({ field, text: data.text });
+    } catch (err) {
+      showToast(err.message || "Couldn't reframe that text — check the reframe-text function is deployed.", false);
+    } finally {
+      setReframing(null);
+    }
+  }
+
+  function applyReframe() {
+    if (!reframeSuggestion) return;
+    updateSlideField(reframeSuggestion.field, reframeSuggestion.text);
+    setReframeSuggestion(null);
+  }
+
+  // ── AI: generate a replacement image (Pollinations — free, no key) ──
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState(null);
+
+  function handleGenerateImage() {
+    if (!imagePrompt.trim()) return;
+    setGeneratingImage(true);
+    const seed = Date.now();
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=900&height=507&nologo=true&seed=${seed}`;
+    setGeneratedImageUrl(url);
+  }
+
+  function useGeneratedImage() {
+    updateSlideField("image", generatedImageUrl);
+    setGeneratedImageUrl(null);
+    setImagePrompt("");
+  }
 
   async function buildPptx() {
     let PptxGenJS;
@@ -399,8 +451,20 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
         </div>
 
         <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            Slide {slideIndex + 1} of {slides.length} — heading
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+              Slide {slideIndex + 1} of {slides.length} — heading
+            </div>
+            <button
+              type="button"
+              onClick={() => handleReframe("heading")}
+              disabled={reframing === "heading"}
+              className="flex items-center gap-1 text-[11px] font-medium disabled:opacity-50"
+              style={{ color: "var(--am)" }}
+            >
+              {reframing === "heading" ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              Reframe with AI
+            </button>
           </div>
           <input
             value={currentSlide.heading}
@@ -408,11 +472,36 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
             className="w-full rounded-[8px] border px-2.5 py-1.5 text-[13px]"
             style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
           />
+          {reframeSuggestion?.field === "heading" && (
+            <div className="mt-1.5 rounded-[8px] border p-2" style={{ borderColor: "var(--am)", background: "var(--up)" }}>
+              <div className="mb-1.5 text-[12px]" style={{ color: "var(--ink)" }}>{reframeSuggestion.text}</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={applyReframe} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white" style={{ background: "var(--am)" }}>
+                  Use this
+                </button>
+                <button type="button" onClick={() => setReframeSuggestion(null)} className="rounded-md border px-2 py-1 text-[11px]" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
+                  Keep mine
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            Slide {slideIndex + 1} body
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
+              Slide {slideIndex + 1} body
+            </div>
+            <button
+              type="button"
+              onClick={() => handleReframe("body")}
+              disabled={reframing === "body"}
+              className="flex items-center gap-1 text-[11px] font-medium disabled:opacity-50"
+              style={{ color: "var(--am)" }}
+            >
+              {reframing === "body" ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              Reframe with AI
+            </button>
           </div>
           <textarea
             value={currentSlide.body}
@@ -421,6 +510,19 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
             className="w-full rounded-[8px] border px-2.5 py-1.5 text-[13px] leading-relaxed"
             style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
           />
+          {reframeSuggestion?.field === "body" && (
+            <div className="mt-1.5 rounded-[8px] border p-2" style={{ borderColor: "var(--am)", background: "var(--up)" }}>
+              <div className="mb-1.5 whitespace-pre-line text-[12px]" style={{ color: "var(--ink)" }}>{reframeSuggestion.text}</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={applyReframe} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white" style={{ background: "var(--am)" }}>
+                  Use this
+                </button>
+                <button type="button" onClick={() => setReframeSuggestion(null)} className="rounded-md border px-2 py-1 text-[11px]" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
+                  Keep mine
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -445,6 +547,53 @@ export default function DeckEditorModal({ open, onClose, recipients, categories 
               </>
             )}
           </div>
+
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              value={imagePrompt}
+              onChange={(e) => setImagePrompt(e.target.value)}
+              placeholder="Or describe an image to generate…"
+              className="flex-1 rounded-[8px] border px-2.5 py-1.5 text-[12px]"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)" }}
+            />
+            <button
+              type="button"
+              onClick={handleGenerateImage}
+              disabled={!imagePrompt.trim() || generatingImage}
+              className="flex items-center gap-1 whitespace-nowrap rounded-[8px] border px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-50"
+              style={{ borderColor: "var(--am)", color: "var(--am)" }}
+            >
+              <Sparkles size={11} />
+              Generate
+            </button>
+          </div>
+          {generatedImageUrl && (
+            <div className="mt-1.5 flex items-center gap-2 rounded-[8px] border p-2" style={{ borderColor: "var(--am)", background: "var(--up)" }}>
+              <img
+                src={generatedImageUrl}
+                alt="Generated preview"
+                className="h-16 w-28 rounded object-cover"
+                onLoad={() => setGeneratingImage(false)}
+                onError={() => {
+                  setGeneratingImage(false);
+                  showToast("Image generation failed — try a different prompt.", false);
+                  setGeneratedImageUrl(null);
+                }}
+              />
+              {generatingImage ? (
+                <span className="text-[11px]" style={{ color: "var(--ink3)" }}>Generating…</span>
+              ) : (
+                <div className="flex gap-2">
+                  <button type="button" onClick={useGeneratedImage} className="rounded-md px-2 py-1 text-[11px] font-semibold text-white" style={{ background: "var(--am)" }}>
+                    Use this image
+                  </button>
+                  <button type="button" onClick={handleGenerateImage} className="rounded-md border px-2 py-1 text-[11px]" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
+                    Try again
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {slideIndex === slides.length - 1 && (
