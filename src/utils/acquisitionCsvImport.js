@@ -6,11 +6,13 @@ const HEADER_MAP = {
   name: "name",
   creator: "name",
   "creator name": "name",
+  "channel name": "name",
 
   link: "profileLink",
   "profile link": "profileLink",
   "channel link": "profileLink",
   instagram: "profileLink",
+  "insta link": "profileLink",
   url: "profileLink",
 
   subscribers: "subscribers",
@@ -21,6 +23,8 @@ const HEADER_MAP = {
   mail: "email",
   email: "email",
   "email address": "email",
+  "email ids": "email",
+  "email id": "email",
 
   number: "phone",
   phone: "phone",
