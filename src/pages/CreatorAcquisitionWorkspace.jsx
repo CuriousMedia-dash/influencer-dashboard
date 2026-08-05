@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Mail, RefreshCw } from "lucide-react";
 import { useAcquisitionRecords } from "../hooks/useAcquisitionRecords";
 import { useAuth } from "../hooks/useAuth";
@@ -58,13 +58,8 @@ function ResourceTabContent({ kind }) {
     }
   }
 
-  useEffect(() => {
-    if (kind !== "creators") return;
-    runSheetSync(true); // sync on open
-    const id = setInterval(() => runSheetSync(true), 5 * 60 * 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind]);
+  // No automatic sync — only runs when the "Sync sheet" button is
+  // clicked. Opening the tab (or leaving it open) never triggers it.
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);

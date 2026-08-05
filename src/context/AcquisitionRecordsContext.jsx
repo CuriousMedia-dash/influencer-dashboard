@@ -112,7 +112,7 @@ function useResourceCrud(table, hasMarketingBudget) {
     rows.forEach((row) => {
       const emailKey = row.email ? row.email.trim().toLowerCase() : null;
       const nameLinkKey = `${row.name.trim().toLowerCase()}|${(row.profileLink || "").trim().toLowerCase()}`;
-      const match = (emailKey && byEmail.get(emailKey)) || byNameLink.get(nameLinkKey);
+      const match = byNameLink.get(nameLinkKey) || (emailKey && byEmail.get(emailKey));
       if (match) {
         const changed = diffFields(match, row);
         if (Object.keys(changed).length > 0) toUpdate.push({ id: match.id, fields: changed });

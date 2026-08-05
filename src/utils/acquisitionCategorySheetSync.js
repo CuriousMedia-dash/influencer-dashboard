@@ -92,6 +92,7 @@ function parseTabRows(csvText, category) {
   const linkIdx = findColumnIndex(headerCells, ["channel link", "link"]);
   const emailIdx = findColumnIndex(headerCells, ["email"]);
   const subsIdx = findColumnIndex(headerCells, ["followers", "subscribers", "subscriber"]);
+  const phoneIdx = findColumnIndex(headerCells, ["contact no", "phone", "mobile", "contact"]);
 
   if (nameIdx === -1) return [];
 
@@ -104,6 +105,7 @@ function parseTabRows(csvText, category) {
       name,
       profileLink: linkIdx !== -1 ? (cells[linkIdx] || "").trim() : "",
       email: emailIdx !== -1 ? (cells[emailIdx] || "").trim() : "",
+      phone: phoneIdx !== -1 ? (cells[phoneIdx] || "").trim() : "",
       category,
     };
     if (subsIdx !== -1) {
@@ -116,7 +118,7 @@ function parseTabRows(csvText, category) {
 }
 
 /**
- * Fetches every mapped tab and returns a flat list of { name, profileLink, email, category, subscribers? }.
+ * Fetches every mapped tab and returns a flat list of { name, profileLink, email, category }.
  * Throws if the sheet itself can't be reached; a single tab failing to
  * parse is skipped rather than aborting the whole sync.
  */
