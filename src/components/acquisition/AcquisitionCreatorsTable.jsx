@@ -185,9 +185,12 @@ export default function AcquisitionCreatorsTable({
   const colCount = 18 + (hasMarketingBudget ? 4 : 0);
 
   return (
-    <div className="overflow-x-auto rounded-[12px] border" style={{ borderColor: "var(--ln)", background: "var(--panel)" }}>
+    <div
+      className="overflow-x-auto overflow-y-auto rounded-[12px] border"
+      style={{ borderColor: "var(--ln)", background: "var(--panel)", maxHeight: 460 }}
+    >
       <table className="w-full border-collapse">
-        <thead>
+        <thead className="sticky top-0 z-10" style={{ background: "var(--panel)" }}>
           <tr className="border-b" style={{ borderColor: "var(--ln)", color: "var(--ink3)" }}>
             <th className={th}>
               <input type="checkbox" checked={allSelected} onChange={(e) => onToggleSelectAll(e.target.checked)} />

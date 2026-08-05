@@ -92,14 +92,33 @@ function useResourceCrud(table, hasMarketingBudget) {
       byNameLink.set(`${c.name.trim().toLowerCase()}|${c.profileLink.trim().toLowerCase()}`, c);
     });
 
+    // Only fields that actually differ from what's already stored get
+    // written — this is what keeps a repeat sync (e.g. the 5-minute
+    // Google Sheet auto-sync) from hammering the database with
+    // hundreds of no-op writes every time it runs.
+    function diffFields(existing, incoming) {
+      const changed = {};
+      Object.entries(incoming).forEach(([key, val]) => {
+        const current = existing[key];
+        const normalizedVal = val ?? "";
+        const normalizedCurrent = current ?? "";
+        if (String(normalizedVal) !== String(normalizedCurrent)) changed[key] = val;
+      });
+      return changed;
+    }
+
     const toInsert = [];
     const toUpdate = [];
     rows.forEach((row) => {
       const emailKey = row.email ? row.email.trim().toLowerCase() : null;
       const nameLinkKey = `${row.name.trim().toLowerCase()}|${(row.profileLink || "").trim().toLowerCase()}`;
       const match = (emailKey && byEmail.get(emailKey)) || byNameLink.get(nameLinkKey);
-      if (match) toUpdate.push({ id: match.id, fields: row });
-      else toInsert.push(row);
+      if (match) {
+        const changed = diffFields(match, row);
+        if (Object.keys(changed).length > 0) toUpdate.push({ id: match.id, fields: changed });
+      } else {
+        toInsert.push(row);
+      }
     });
 
     const { data: userData } = await supabase.auth.getUser();
@@ -116,16 +135,19 @@ function useResourceCrud(table, hasMarketingBudget) {
     }
 
     let updatedCount = 0;
-    for (const { id, fields } of toUpdate) {
-      const { error: err } = await supabase.from(table).update(toAcqCreatorColumns(stripFields(fields))).eq("id", id);
-      if (err) {
-        console.error(`Bulk update failed for ${id} in ${table}:`, err.message);
-        continue;
-      }
-      updatedCount += 1;
+    if (toUpdate.length > 0) {
+      const results = await Promise.all(
+        toUpdate.map(({ id, fields }) => supabase.from(table).update(toAcqCreatorColumns(stripFields(fields))).eq("id", id))
+      );
+      results.forEach((res, i) => {
+        if (res.error) console.error(`Bulk update failed for ${toUpdate[i].id} in ${table}:`, res.error.message);
+        else updatedCount += 1;
+      });
     }
 
-    await refresh();
+    if (insertedCount > 0 || updatedCount > 0) {
+      await refresh();
+    }
     return { added: insertedCount, updated: updatedCount };
   }, [items, table, refresh]);
 

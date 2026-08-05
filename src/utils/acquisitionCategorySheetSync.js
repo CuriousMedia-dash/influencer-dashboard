@@ -1,8 +1,8 @@
 // Auto-syncs the Creators tab from a specific Google Sheet where each
-// TAB is a category (not a column). Only name, link, and mail are
-// pulled in — everything else on a matched row (execution stage,
-// convert, dates, handover, budget, remarks, stakeholder, etc.) is left
-// completely untouched, even on re-sync.
+// TAB is a category (not a column). Pulls name, link, mail, and
+// subscriber/follower count — everything else on a matched row
+// (execution stage, convert, dates, handover, budget, remarks,
+// stakeholder, etc.) is left completely untouched, even on re-sync.
 //
 // Runs client-side on an interval while the Creators tab is open — not
 // a background/server job, so it only syncs while someone has the page
@@ -69,6 +69,20 @@ function findColumnIndex(headerCells, candidates) {
   return idx;
 }
 
+function parseSubscriberCount(raw) {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim().toUpperCase().replace(/,/g, "");
+  const m = s.match(/^([\d.]+)([KM]?)$/);
+  if (!m) {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  const num = parseFloat(m[1]);
+  if (m[2] === "K") return Math.round(num * 1000);
+  if (m[2] === "M") return Math.round(num * 1000000);
+  return Math.round(num);
+}
+
 function parseTabRows(csvText, category) {
   const lines = String(csvText ?? "").split(/\r\n|\n|\r/).filter((l) => l.trim() !== "");
   if (lines.length === 0) return [];
@@ -77,6 +91,7 @@ function parseTabRows(csvText, category) {
   const nameIdx = findColumnIndex(headerCells, ["channel name", "name"]);
   const linkIdx = findColumnIndex(headerCells, ["channel link", "link"]);
   const emailIdx = findColumnIndex(headerCells, ["email"]);
+  const subsIdx = findColumnIndex(headerCells, ["followers", "subscribers", "subscriber"]);
 
   if (nameIdx === -1) return [];
 
@@ -85,33 +100,40 @@ function parseTabRows(csvText, category) {
     const cells = parseCsvLine(lines[i]);
     const name = (cells[nameIdx] || "").trim();
     if (!name) continue;
-    rows.push({
+    const row = {
       name,
       profileLink: linkIdx !== -1 ? (cells[linkIdx] || "").trim() : "",
       email: emailIdx !== -1 ? (cells[emailIdx] || "").trim() : "",
       category,
-    });
+    };
+    if (subsIdx !== -1) {
+      const subs = parseSubscriberCount(cells[subsIdx]);
+      if (subs != null) row.subscribers = subs;
+    }
+    rows.push(row);
   }
   return rows;
 }
 
 /**
- * Fetches every mapped tab and returns a flat list of { name, profileLink, email, category }.
+ * Fetches every mapped tab and returns a flat list of { name, profileLink, email, category, subscribers? }.
  * Throws if the sheet itself can't be reached; a single tab failing to
  * parse is skipped rather than aborting the whole sync.
  */
 export async function fetchCategorySheetRows() {
-  const allRows = [];
-  const errors = [];
+  const entries = Object.entries(TAB_CATEGORY_MAP);
+  const results = await Promise.all(
+    entries.map(async ([tabName, category]) => {
+      try {
+        const csvText = await fetchSheetCsv(gvizCsvUrl(tabName));
+        return { rows: parseTabRows(csvText, category) };
+      } catch (err) {
+        return { rows: [], error: { tabName, message: err.message || String(err) } };
+      }
+    })
+  );
 
-  for (const [tabName, category] of Object.entries(TAB_CATEGORY_MAP)) {
-    try {
-      const csvText = await fetchSheetCsv(gvizCsvUrl(tabName));
-      allRows.push(...parseTabRows(csvText, category));
-    } catch (err) {
-      errors.push({ tabName, message: err.message || String(err) });
-    }
-  }
-
+  const allRows = results.flatMap((r) => r.rows);
+  const errors = results.map((r) => r.error).filter(Boolean);
   return { rows: allRows, errors };
 }
