@@ -64,9 +64,18 @@ function normaliseHeader(h) {
 }
 
 // Only these three fields are ever read from the sheet.
+// Checks candidates in priority order (most specific first) and returns
+// the first header that matches THAT candidate — not just whichever
+// header happens to come first in the row. This matters because e.g.
+// "Insta Link" also contains the substring "link", so if it happened to
+// sit before "Channel Link" in a given tab, the old column-order-first
+// logic would grab the wrong one.
 function findColumnIndex(headerCells, candidates) {
-  const idx = headerCells.findIndex((h) => candidates.some((c) => normaliseHeader(h).includes(c)));
-  return idx;
+  for (const candidate of candidates) {
+    const idx = headerCells.findIndex((h) => normaliseHeader(h).includes(candidate));
+    if (idx !== -1) return idx;
+  }
+  return -1;
 }
 
 function parseSubscriberCount(raw) {

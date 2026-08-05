@@ -127,6 +127,15 @@ function ResourceTabContent({ kind }) {
   const selectedCategories = new Set(selectedRows.map((r) => r.category).filter(Boolean));
   const canForwardMail = selectedRows.length > 0 && selectedCategories.size <= 1;
 
+  // Real pagination — only the current page's rows are ever mounted in
+  // the table. A scroll container alone doesn't help performance since
+  // React still renders every row's full DOM either way; this does.
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
   return (
     <>
       <div className="mb-2.5 flex items-baseline justify-between gap-1.5">
@@ -193,7 +202,7 @@ function ResourceTabContent({ kind }) {
           </div>
 
           <AcquisitionCreatorsTable
-            rows={filtered}
+            rows={pageRows}
             sort={sort}
             onSort={handleSort}
             selectedIds={selectedIds}
@@ -209,6 +218,32 @@ function ResourceTabContent({ kind }) {
             hasMarketingBudget={resourceConfig.hasMarketingBudget}
             resourceKind={kind}
           />
+
+          {pageCount > 1 && (
+            <div className="mt-2 flex items-center justify-between text-[12px]" style={{ color: "var(--ink2)" }}>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={safePage === 0}
+                className="rounded-md border px-2.5 py-1 disabled:opacity-40"
+                style={{ borderColor: "var(--ln)" }}
+              >
+                Prev
+              </button>
+              <span>
+                Page {safePage + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={safePage >= pageCount - 1}
+                className="rounded-md border px-2.5 py-1 disabled:opacity-40"
+                style={{ borderColor: "var(--ln)" }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </main>
       </div>
 
