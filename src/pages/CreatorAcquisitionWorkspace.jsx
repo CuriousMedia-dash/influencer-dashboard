@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
-import { Mail } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Mail, RefreshCw } from "lucide-react";
 import { useAcquisitionRecords } from "../hooks/useAcquisitionRecords";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../hooks/useToast";
 import { ACQUISITION_RESOURCES } from "../utils/acquisitionRecordsConfig";
 import { isClaimed, isOwner } from "../utils/acquisitionOwnership";
+import { fetchCategorySheetRows } from "../utils/acquisitionCategorySheetSync";
 import AcquisitionTabBar from "../components/acquisition/AcquisitionTabBar";
 import AcquisitionViewToggle from "../components/acquisition/AcquisitionViewToggle";
 import AcquisitionFilterSidebar from "../components/acquisition/AcquisitionFilterSidebar";
@@ -19,11 +21,50 @@ const DEFAULT_FILTERS = {
 };
 
 function ResourceTabContent({ kind }) {
-  const { items, loading, updateRecord, deleteRecord, refresh } = useAcquisitionRecords(kind);
+  const { items, loading, updateRecord, deleteRecord, refresh, bulkImport } = useAcquisitionRecords(kind);
   const { user } = useAuth();
+  const showToast = useToast();
   const currentUserEmail = user?.email || "";
   const resourceConfig = ACQUISITION_RESOURCES[kind];
   const countLabel = resourceConfig.countLabel;
+
+  // Auto-sync from the category Google Sheet — Creators only, and only
+  // while this tab is actually open (no background/server job). Pulls
+  // name/link/mail per category tab and leaves every other field on a
+  // matched row untouched.
+  const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState(null);
+
+  async function runSheetSync(silent) {
+    setSyncing(true);
+    try {
+      const { rows, errors } = await fetchCategorySheetRows();
+      if (rows.length > 0) {
+        await bulkImport(rows);
+      }
+      setLastSynced(new Date());
+      if (!silent) {
+        showToast(
+          errors.length > 0
+            ? `Synced ${rows.length} rows — ${errors.length} tab(s) failed to load.`
+            : `Synced ${rows.length} rows from the sheet.`,
+          errors.length === 0
+        );
+      }
+    } catch (err) {
+      if (!silent) showToast(err.message || "Sheet sync failed.", false);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (kind !== "creators") return;
+    runSheetSync(true); // sync on open
+    const id = setInterval(() => runSheetSync(true), 5 * 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -106,7 +147,22 @@ function ResourceTabContent({ kind }) {
             </>
           )}
         </div>
-        <AcquisitionViewToggle value={viewMode} onChange={setViewMode} />
+        <div className="flex items-center gap-2">
+          {kind === "creators" && (
+            <button
+              type="button"
+              onClick={() => runSheetSync(false)}
+              disabled={syncing}
+              title={lastSynced ? `Last synced ${lastSynced.toLocaleTimeString()}` : "Not synced yet this session"}
+              className="flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 text-[11px] disabled:opacity-60"
+              style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+            >
+              <RefreshCw size={11} className={syncing ? "animate-spin" : ""} />
+              {syncing ? "Syncing…" : "Sync sheet"}
+            </button>
+          )}
+          <AcquisitionViewToggle value={viewMode} onChange={setViewMode} />
+        </div>
       </div>
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-4">
