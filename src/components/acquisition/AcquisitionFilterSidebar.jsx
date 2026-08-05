@@ -102,7 +102,7 @@ function SubscriberRange({ value, onChange }) {
  * { search, subscriberRange: [min, max|null], categories: Set<string>, convert: "all"|"yes"|"no", handover: "all"|"yes"|"no" }
  * subscriberRange max of null means "no upper limit".
  */
-export default function AcquisitionFilterSidebar({ filters, onChange, categories = [], categoryColors = {} }) {
+export default function AcquisitionFilterSidebar({ filters, onChange, categories = [], categoryColors = {}, handoverLabel = "Handover to SMM" }) {
   const toggleCategory = (cat) => {
     const next = new Set(filters.categories);
     if (next.has(cat)) next.delete(cat);
@@ -140,7 +140,7 @@ export default function AcquisitionFilterSidebar({ filters, onChange, categories
       </div>
 
       <TriToggle label="Converted" value={filters.convert} onChange={(v) => onChange({ ...filters, convert: v })} />
-      <TriToggle label="Handover to SMM" value={filters.handover} onChange={(v) => onChange({ ...filters, handover: v })} />
+      <TriToggle label={handoverLabel} value={filters.handover} onChange={(v) => onChange({ ...filters, handover: v })} />
 
       <button
         type="button"

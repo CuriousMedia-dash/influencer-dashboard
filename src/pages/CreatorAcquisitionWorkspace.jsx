@@ -110,7 +110,7 @@ function ResourceTabContent({ kind }) {
       </div>
 
       <div className="grid grid-cols-[240px_minmax(0,1fr)] items-start gap-4">
-        <AcquisitionFilterSidebar filters={filters} onChange={setFilters} categories={resourceConfig.categories} categoryColors={resourceConfig.categoryColors} />
+        <AcquisitionFilterSidebar filters={filters} onChange={setFilters} categories={resourceConfig.categories} categoryColors={resourceConfig.categoryColors} handoverLabel={resourceConfig.handoverLabel} />
 
         <main className="min-w-0">
           <div className="mb-2.5 flex items-center justify-between gap-2 rounded-[9px] border px-3 py-2 text-[12px]" style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}>
