@@ -130,11 +130,15 @@ function ResourceTabContent({ kind }) {
   // Real pagination — only the current page's rows are ever mounted in
   // the table. A scroll container alone doesn't help performance since
   // React still renders every row's full DOM either way; this does.
-  const PAGE_SIZE = 10;
-  const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  // Infinite scroll — only this many rows are mounted at a time; more
+  // get appended as you scroll near the bottom of the table (see
+  // AcquisitionCreatorsTable's onNearBottom prop below).
+  const BATCH_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
+  const pageRows = filtered.slice(0, visibleCount);
+  function handleNearBottom() {
+    setVisibleCount((c) => Math.min(filtered.length, c + BATCH_SIZE));
+  }
 
   return (
     <>
@@ -217,31 +221,11 @@ function ResourceTabContent({ kind }) {
             handoverLabel={resourceConfig.handoverLabel}
             hasMarketingBudget={resourceConfig.hasMarketingBudget}
             resourceKind={kind}
+            onNearBottom={handleNearBottom}
           />
-
-          {pageCount > 1 && (
-            <div className="mt-2 flex items-center justify-between text-[12px]" style={{ color: "var(--ink2)" }}>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={safePage === 0}
-                className="rounded-md border px-2.5 py-1 disabled:opacity-40"
-                style={{ borderColor: "var(--ln)" }}
-              >
-                Prev
-              </button>
-              <span>
-                Page {safePage + 1} of {pageCount}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                disabled={safePage >= pageCount - 1}
-                className="rounded-md border px-2.5 py-1 disabled:opacity-40"
-                style={{ borderColor: "var(--ln)" }}
-              >
-                Next
-              </button>
+          {pageRows.length < filtered.length && (
+            <div className="mt-1.5 text-center text-[11px]" style={{ color: "var(--ink3)" }}>
+              Showing {pageRows.length} of {filtered.length} — scroll for more
             </div>
           )}
         </main>

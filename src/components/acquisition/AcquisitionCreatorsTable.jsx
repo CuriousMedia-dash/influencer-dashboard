@@ -156,6 +156,7 @@ export default function AcquisitionCreatorsTable({
   handoverLabel = "Handover to SMM",
   hasMarketingBudget = true,
   resourceKind = "creators",
+  onNearBottom,
 }) {
   const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
 
@@ -184,10 +185,17 @@ export default function AcquisitionCreatorsTable({
 
   const colCount = 18 + (hasMarketingBudget ? 4 : 0);
 
+  function handleScroll(e) {
+    if (!onNearBottom) return;
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - (scrollTop + clientHeight) < 150) onNearBottom();
+  }
+
   return (
     <div
       className="overflow-x-auto overflow-y-auto rounded-[12px] border"
       style={{ borderColor: "var(--ln)", background: "var(--panel)", maxHeight: 460 }}
+      onScroll={handleScroll}
     >
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-10" style={{ background: "var(--panel)" }}>
