@@ -85,11 +85,30 @@ function useResourceCrud(table, hasMarketingBudget) {
   }, [table, refresh]);
 
   const bulkImport = useCallback(async (rows) => {
+    // Normalizes a link so http/https, www., trailing slashes, and case
+    // differences between sheet tabs don't make the same channel look
+    // like two different ones.
+    function normalizeLink(link) {
+      return String(link || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/\/+$/, "");
+    }
+    function normalizeName(name) {
+      return String(name || "").trim().toLowerCase();
+    }
+
     const byEmail = new Map();
     const byNameLink = new Map();
+    const byNameEmail = new Map();
     items.forEach((c) => {
       if (c.email) byEmail.set(c.email.trim().toLowerCase(), c);
-      byNameLink.set(`${c.name.trim().toLowerCase()}|${c.profileLink.trim().toLowerCase()}`, c);
+      if (normalizeLink(c.profileLink)) {
+        byNameLink.set(`${normalizeName(c.name)}|${normalizeLink(c.profileLink)}`, c);
+      }
+      if (c.email) byNameEmail.set(`${normalizeName(c.name)}|${c.email.trim().toLowerCase()}`, c);
     });
 
     // Only fields that actually differ from what's already stored get
@@ -107,12 +126,52 @@ function useResourceCrud(table, hasMarketingBudget) {
       return changed;
     }
 
+    // Dedupe WITHIN this sync batch first — the same channel can appear
+    // in two different tabs (e.g. both "Podcast" and "News"), and each
+    // tab is fetched independently, so without this a single sync could
+    // insert two rows for one channel before cross-sync matching even
+    // gets a chance to help.
+    const dedupedRows = [];
+    const seenInBatch = new Map();
+    rows.forEach((row) => {
+      const linkKey = normalizeLink(row.profileLink);
+      const key = linkKey
+        ? `L:${normalizeName(row.name)}|${linkKey}`
+        : row.email
+        ? `E:${normalizeName(row.name)}|${row.email.trim().toLowerCase()}`
+        : `N:${normalizeName(row.name)}`;
+      if (seenInBatch.has(key)) {
+        const idx = seenInBatch.get(key);
+        const prev = dedupedRows[idx];
+        dedupedRows[idx] = {
+          name: row.name || prev.name,
+          profileLink: row.profileLink || prev.profileLink,
+          email: row.email || prev.email,
+          phone: row.phone || prev.phone,
+          category: row.category || prev.category,
+          subscribers: row.subscribers ?? prev.subscribers,
+        };
+      } else {
+        seenInBatch.set(key, dedupedRows.length);
+        dedupedRows.push(row);
+      }
+    });
+
     const toInsert = [];
     const toUpdate = [];
-    rows.forEach((row) => {
+    dedupedRows.forEach((row) => {
       const emailKey = row.email ? row.email.trim().toLowerCase() : null;
-      const nameLinkKey = `${row.name.trim().toLowerCase()}|${(row.profileLink || "").trim().toLowerCase()}`;
-      const match = byNameLink.get(nameLinkKey) || (emailKey && byEmail.get(emailKey));
+      const linkKey = normalizeLink(row.profileLink);
+      const nameLinkKey = linkKey ? `${normalizeName(row.name)}|${linkKey}` : null;
+      const nameEmailKey = emailKey ? `${normalizeName(row.name)}|${emailKey}` : null;
+      // Prefer name+link (the strongest identity signal); fall back to
+      // name+email for rows with no link on this pass (so a blank-link
+      // sheet entry still merges into the same creator instead of
+      // spawning a linkless duplicate); email alone as a last resort.
+      const match =
+        (nameLinkKey && byNameLink.get(nameLinkKey)) ||
+        (nameEmailKey && byNameEmail.get(nameEmailKey)) ||
+        (emailKey && byEmail.get(emailKey));
       if (match) {
         const changed = diffFields(match, row);
         if (Object.keys(changed).length > 0) toUpdate.push({ id: match.id, fields: changed });
