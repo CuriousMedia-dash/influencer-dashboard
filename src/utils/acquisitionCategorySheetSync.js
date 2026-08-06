@@ -92,16 +92,27 @@ function parseSubscriberCount(raw) {
   return Math.round(num);
 }
 
-function parseTabRows(csvText, category) {
+function parseTabRows(csvText, category, tabName) {
   const lines = String(csvText ?? "").split(/\r\n|\n|\r/).filter((l) => l.trim() !== "");
   if (lines.length === 0) return [];
 
   const headerCells = parseCsvLine(lines[0]);
   const nameIdx = findColumnIndex(headerCells, ["channel name", "name"]);
-  const linkIdx = findColumnIndex(headerCells, ["channel link", "link"]);
+  const linkIdx = findColumnIndex(headerCells, ["channel link", "youtube link", "link", "url", "channel"]);
   const emailIdx = findColumnIndex(headerCells, ["email"]);
   const subsIdx = findColumnIndex(headerCells, ["followers", "subscribers", "subscriber"]);
   const phoneIdx = findColumnIndex(headerCells, ["contact no", "phone", "mobile", "contact"]);
+
+  // Diagnostic — open the browser console (F12) and look for this after
+  // clicking "Sync sheet" to see exactly what headers each tab has and
+  // which columns got matched, without needing another screenshot.
+  console.log(`[sheet sync] tab "${tabName}" headers:`, headerCells, {
+    name: nameIdx === -1 ? "NOT FOUND" : headerCells[nameIdx],
+    link: linkIdx === -1 ? "NOT FOUND" : headerCells[linkIdx],
+    email: emailIdx === -1 ? "NOT FOUND" : headerCells[emailIdx],
+    subscribers: subsIdx === -1 ? "NOT FOUND" : headerCells[subsIdx],
+    phone: phoneIdx === -1 ? "NOT FOUND" : headerCells[phoneIdx],
+  });
 
   if (nameIdx === -1) return [];
 
@@ -137,7 +148,7 @@ export async function fetchCategorySheetRows() {
     entries.map(async ([tabName, category]) => {
       try {
         const csvText = await fetchSheetCsv(gvizCsvUrl(tabName));
-        return { rows: parseTabRows(csvText, category) };
+        return { rows: parseTabRows(csvText, category, tabName) };
       } catch (err) {
         return { rows: [], error: { tabName, message: err.message || String(err) } };
       }
