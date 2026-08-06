@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { ArrowUpDown, Trash2, Lock, Paperclip, FileText, Loader2 } from "lucide-react";
 import EditableCell from "../ui/EditableCell";
-import { fmt, isUrl } from "../../utils/format";
+import { fmt, toHref } from "../../utils/format";
 import {
   ACQ_LEAD_QUALITY,
   ACQ_LEAD_QUALITY_LABELS,
@@ -239,8 +239,8 @@ export default function AcquisitionCreatorsTable({
                   <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => onToggleSelected(r.id)} />
                 </td>
                 <td className={td}>
-                  {r.profileLink && isUrl(r.profileLink) ? (
-                    <a href={r.profileLink} target="_blank" rel="noreferrer" style={{ color: "var(--am)" }}>
+                  {toHref(r.profileLink) ? (
+                    <a href={toHref(r.profileLink)} target="_blank" rel="noreferrer" style={{ color: "var(--am)" }}>
                       {r.name || "Untitled"}
                     </a>
                   ) : (
