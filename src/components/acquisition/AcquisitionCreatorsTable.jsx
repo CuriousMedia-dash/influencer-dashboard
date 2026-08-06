@@ -78,7 +78,7 @@ function Blank() {
 // nothing's attached yet, or a filename link + re-upload option once
 // something is. Used for both the Convert-PDF and Marketing-Report-CSV
 // attachments.
-function AttachButton({ kind, recordId, field, accept, fileUrl, fileName, onAttached, label }) {
+function AttachButton({ kind, recordId, field, accept, fileUrl, fileName, onAttached, label, readOnly }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const showToast = useToast();
@@ -96,6 +96,26 @@ function AttachButton({ kind, recordId, field, accept, fileUrl, fileName, onAtta
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
     }
+  }
+
+  if (readOnly) {
+    return fileUrl ? (
+      <a
+        href={fileUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1 truncate text-[11px]"
+        style={{ color: "var(--am)", maxWidth: 90 }}
+        title={fileName}
+      >
+        <FileText size={11} />
+        <span className="truncate">{fileName || "File"}</span>
+      </a>
+    ) : (
+      <span style={{ color: "var(--ink3)" }} title="Only the stakeholder can attach this">
+        —
+      </span>
+    );
   }
 
   return (
@@ -310,6 +330,7 @@ export default function AcquisitionCreatorsTable({
                       fileName={r.convertPdfName}
                       label="PDF"
                       onAttached={(url, name) => onUpdate(r.id, { convertPdfUrl: url, convertPdfName: name })}
+                      readOnly={locked}
                     />
                   </div>
                 </td>
