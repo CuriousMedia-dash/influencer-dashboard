@@ -103,16 +103,17 @@ function parseTabRows(csvText, category, tabName) {
   const subsIdx = findColumnIndex(headerCells, ["followers", "subscribers", "subscriber"]);
   const phoneIdx = findColumnIndex(headerCells, ["contact no", "phone", "mobile", "contact"]);
 
-  // Diagnostic — open the browser console (F12) and look for this after
-  // clicking "Sync sheet" to see exactly what headers each tab has and
-  // which columns got matched, without needing another screenshot.
-  console.log(`[sheet sync] tab "${tabName}" headers:`, headerCells, {
-    name: nameIdx === -1 ? "NOT FOUND" : headerCells[nameIdx],
-    link: linkIdx === -1 ? "NOT FOUND" : headerCells[linkIdx],
-    email: emailIdx === -1 ? "NOT FOUND" : headerCells[emailIdx],
-    subscribers: subsIdx === -1 ? "NOT FOUND" : headerCells[subsIdx],
-    phone: phoneIdx === -1 ? "NOT FOUND" : headerCells[phoneIdx],
-  });
+  // Diagnostic — open the browser console (F12), click "Sync sheet",
+  // then copy-paste these lines as plain text (no need to expand
+  // anything) so the real column layout per tab is visible directly.
+  console.log(
+    `[sheet sync] "${tabName}" | name="${nameIdx === -1 ? "NOT FOUND" : headerCells[nameIdx]}" ` +
+      `link="${linkIdx === -1 ? "NOT FOUND" : headerCells[linkIdx]}" ` +
+      `email="${emailIdx === -1 ? "NOT FOUND" : headerCells[emailIdx]}" ` +
+      `subs="${subsIdx === -1 ? "NOT FOUND" : headerCells[subsIdx]}" ` +
+      `phone="${phoneIdx === -1 ? "NOT FOUND" : headerCells[phoneIdx]}" ` +
+      `| ALL HEADERS: [${headerCells.join(" | ")}]`
+  );
 
   if (nameIdx === -1) return [];
 

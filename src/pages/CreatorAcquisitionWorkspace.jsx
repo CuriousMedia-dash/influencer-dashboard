@@ -39,17 +39,17 @@ function ResourceTabContent({ kind }) {
     setSyncing(true);
     try {
       const { rows, errors } = await fetchCategorySheetRows();
+      let added = 0;
+      let updated = 0;
       if (rows.length > 0) {
-        await bulkImport(rows);
+        const result = await bulkImport(rows);
+        added = result.added;
+        updated = result.updated;
       }
       setLastSynced(new Date());
       if (!silent) {
-        showToast(
-          errors.length > 0
-            ? `Synced ${rows.length} rows — ${errors.length} tab(s) failed to load.`
-            : `Synced ${rows.length} rows from the sheet.`,
-          errors.length === 0
-        );
+        const base = `Sheet had ${rows.length} rows → ${added} new, ${updated} updated (rest already matched, no changes).`;
+        showToast(errors.length > 0 ? `${base} ${errors.length} tab(s) failed to load.` : base, errors.length === 0);
       }
     } catch (err) {
       if (!silent) showToast(err.message || "Sheet sync failed.", false);
