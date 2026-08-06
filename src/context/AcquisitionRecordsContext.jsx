@@ -131,19 +131,26 @@ function useResourceCrud(table, hasMarketingBudget) {
     // tab is fetched independently, so without this a single sync could
     // insert two rows for one channel before cross-sync matching even
     // gets a chance to help.
+    //
+    // Checks BOTH a name+link key and a name+email key against the same
+    // growing set (not a single derived key) — otherwise a duplicate
+    // where one copy has a link and the other doesn't never actually
+    // merges, since they'd land under two different keys entirely.
     const dedupedRows = [];
-    const seenInBatch = new Map();
+    const batchByNameLink = new Map();
+    const batchByNameEmail = new Map();
     rows.forEach((row) => {
       const linkKey = normalizeLink(row.profileLink);
-      const key = linkKey
-        ? `L:${normalizeName(row.name)}|${linkKey}`
-        : row.email
-        ? `E:${normalizeName(row.name)}|${row.email.trim().toLowerCase()}`
-        : `N:${normalizeName(row.name)}`;
-      if (seenInBatch.has(key)) {
-        const idx = seenInBatch.get(key);
-        const prev = dedupedRows[idx];
-        dedupedRows[idx] = {
+      const nameLinkKey = linkKey ? `${normalizeName(row.name)}|${linkKey}` : null;
+      const nameEmailKey = row.email ? `${normalizeName(row.name)}|${row.email.trim().toLowerCase()}` : null;
+
+      const existingIdx =
+        (nameLinkKey && batchByNameLink.get(nameLinkKey)) ??
+        (nameEmailKey && batchByNameEmail.get(nameEmailKey));
+
+      if (existingIdx != null) {
+        const prev = dedupedRows[existingIdx];
+        dedupedRows[existingIdx] = {
           name: row.name || prev.name,
           profileLink: row.profileLink || prev.profileLink,
           email: row.email || prev.email,
@@ -151,9 +158,18 @@ function useResourceCrud(table, hasMarketingBudget) {
           category: row.category || prev.category,
           subscribers: row.subscribers ?? prev.subscribers,
         };
+        // Re-register the merged row's own keys too, in case this pass
+        // filled in a link/email the earlier copy didn't have — so a
+        // third duplicate later in the batch can still find it.
+        const merged = dedupedRows[existingIdx];
+        const mergedLinkKey = normalizeLink(merged.profileLink);
+        if (mergedLinkKey) batchByNameLink.set(`${normalizeName(merged.name)}|${mergedLinkKey}`, existingIdx);
+        if (merged.email) batchByNameEmail.set(`${normalizeName(merged.name)}|${merged.email.trim().toLowerCase()}`, existingIdx);
       } else {
-        seenInBatch.set(key, dedupedRows.length);
+        const newIdx = dedupedRows.length;
         dedupedRows.push(row);
+        if (nameLinkKey) batchByNameLink.set(nameLinkKey, newIdx);
+        if (nameEmailKey) batchByNameEmail.set(nameEmailKey, newIdx);
       }
     });
 
