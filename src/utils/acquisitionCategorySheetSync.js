@@ -138,25 +138,66 @@ function parseTabRows(csvText, category, tabName) {
   return rows;
 }
 
+function normaliseNameForBackfill(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
 /**
  * Fetches every mapped tab and returns a flat list of { name, profileLink, email, category }.
+ * Also fetches the "All" tab separately — not for category (it isn't a
+ * real category), but purely as a backfill source: if a category tab's
+ * row is missing a link/email/phone/subscribers, and "All" has that
+ * same creator (matched by name) with a value, that value fills the
+ * gap. "All" never creates new rows and never sets category.
  * Throws if the sheet itself can't be reached; a single tab failing to
  * parse is skipped rather than aborting the whole sync.
  */
 export async function fetchCategorySheetRows() {
   const entries = Object.entries(TAB_CATEGORY_MAP);
-  const results = await Promise.all(
-    entries.map(async ([tabName, category]) => {
+  const [categoryResults, allTabResult] = await Promise.all([
+    Promise.all(
+      entries.map(async ([tabName, category]) => {
+        try {
+          const csvText = await fetchSheetCsv(gvizCsvUrl(tabName));
+          return { rows: parseTabRows(csvText, category, tabName) };
+        } catch (err) {
+          return { rows: [], error: { tabName, message: err.message || String(err) } };
+        }
+      })
+    ),
+    (async () => {
       try {
-        const csvText = await fetchSheetCsv(gvizCsvUrl(tabName));
-        return { rows: parseTabRows(csvText, category, tabName) };
+        const csvText = await fetchSheetCsv(gvizCsvUrl("All"));
+        return { rows: parseTabRows(csvText, null, "All") };
       } catch (err) {
-        return { rows: [], error: { tabName, message: err.message || String(err) } };
+        return { rows: [], error: { tabName: "All", message: err.message || String(err) } };
       }
-    })
-  );
+    })(),
+  ]);
 
-  const allRows = results.flatMap((r) => r.rows);
-  const errors = results.map((r) => r.error).filter(Boolean);
-  return { rows: allRows, errors };
+  const allRows = categoryResults.flatMap((r) => r.rows);
+  const errors = categoryResults.map((r) => r.error).filter(Boolean);
+  if (allTabResult.error) errors.push(allTabResult.error);
+
+  // Build a name -> most-complete-row lookup from "All" for backfilling.
+  const backfillByName = new Map();
+  allTabResult.rows.forEach((r) => {
+    const key = normaliseNameForBackfill(r.name);
+    if (!key) return;
+    backfillByName.set(key, r);
+  });
+
+  const backfilledRows = allRows.map((row) => {
+    const source = backfillByName.get(normaliseNameForBackfill(row.name));
+    if (!source) return row;
+    return {
+      ...row,
+      profileLink: row.profileLink || source.profileLink || "",
+      email: row.email || source.email || "",
+      phone: row.phone || source.phone || "",
+      subscribers: row.subscribers ?? source.subscribers,
+    };
+  });
+
+  return { rows: backfilledRows, errors };
 }
