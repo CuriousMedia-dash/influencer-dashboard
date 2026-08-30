@@ -57,7 +57,14 @@ export default function ImportCreatorsModal({ open, onClose }) {
   const [linkInput, setLinkInput] = useState("");
   const [linkError, setLinkError] = useState("");
   const [syncSummary, setSyncSummary] = useState(null);
-  const [mirrorMode, setMirrorMode] = useState(() => Boolean(sheetLink?.mirror));
+  // Follows the saved sheet's own setting until the user actually ticks
+  // the box themselves. The saved sheet is loaded from the database just
+  // after the app starts, which can land after this modal has already
+  // mounted — reading it live like this keeps the checkbox correct
+  // instead of freezing whatever was known at mount.
+  const [mirrorOverride, setMirrorOverride] = useState(null);
+  const mirrorMode = mirrorOverride ?? Boolean(sheetLink?.mirror);
+  const setMirrorMode = setMirrorOverride;
   const [editingLink, setEditingLink] = useState(false);
   const syncing = syncStatus === "syncing";
 
@@ -144,11 +151,13 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setLinkError("");
     setSyncSummary(null);
     try {
-      const { added, updated, removed, rowErrors } = await syncNow(rawUrl, { mirror: mirrorMode });
+      const result = await syncNow(rawUrl, { mirror: mirrorMode });
+      if (!result) return;
+      const { added, duplicates, removed, rowErrors } = result;
       setEditingLink(false);
-      setSyncSummary({ added, updated, removed, rowErrors });
+      setSyncSummary({ added, duplicates, removed, rowErrors });
       showToast(
-        `Synced: ${added} added, ${updated} updated` +
+        `Synced: ${added} added, ${duplicates} duplicate${duplicates === 1 ? "" : "s"}` +
           (mirrorMode ? `, ${removed} removed` : "") +
           (rowErrors.length > 0 ? `, ${rowErrors.length} row${rowErrors.length === 1 ? "" : "s"} skipped (errors)` : ""),
         true
@@ -332,6 +341,9 @@ export default function ImportCreatorsModal({ open, onClose }) {
               <div className="text-[11px]" style={{ color: "var(--ink3)" }}>
                 {sheetLink.lastSyncedAt ? `Last synced ${new Date(sheetLink.lastSyncedAt).toLocaleString()}` : "Not synced yet"}
               </div>
+              <div className="mt-1 text-[11px]" style={{ color: "var(--ink3)" }}>
+                Syncs on its own every morning at 7:00 AM
+              </div>
             </div>
           ) : (
             <div className="mb-4">
@@ -386,7 +398,7 @@ export default function ImportCreatorsModal({ open, onClose }) {
           {syncSummary && !linkError && (
             <div className="mb-4 flex items-center gap-2 rounded-[10px] border p-3 text-xs font-medium" style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}>
               <CheckCircle2 size={14} className="flex-shrink-0" />
-              {syncSummary.added} added, {syncSummary.updated} updated
+              {syncSummary.added} added, {syncSummary.duplicates} duplicate{syncSummary.duplicates === 1 ? "" : "s"}
               {mirrorMode && `, ${syncSummary.removed} removed`}
               {syncSummary.rowErrors?.length > 0 && `, ${syncSummary.rowErrors.length} row${syncSummary.rowErrors.length === 1 ? "" : "s"} skipped`}
             </div>

@@ -33,8 +33,13 @@ export function describeActivity(entry) {
       return `${who} deleted ${d.count > 1 ? `${d.count} creators` : d.name || "a creator"}`;
     case "creators_imported":
       return `${who} imported ${d.added ?? 0} new and updated ${d.updated ?? 0} creators via CSV`;
-    case "sheet_synced":
-      return `${who} synced the master sheet (${d.added ?? 0} added, ${d.updated ?? 0} updated${d.removed ? `, ${d.removed} removed` : ""})`;
+    case "sheet_synced": {
+      const dupes = d.duplicates ?? d.updated ?? 0;
+      const counts = `${d.added ?? 0} added, ${dupes} duplicate${dupes === 1 ? "" : "s"}${d.removed ? `, ${d.removed} removed` : ""}`;
+      return d.auto
+        ? `Morning auto-sync ran on the master sheet (${counts})`
+        : `${who} synced the master sheet (${counts})`;
+    }
     case "campaign_created":
       return `${who} created campaign "${d.name || "Untitled"}"`;
     case "campaign_deleted":

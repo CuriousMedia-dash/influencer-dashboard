@@ -1,7 +1,8 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { CreatorsContext } from "./creatorsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../hooks/useToast";
 import { dedupeKey, syncCreators, parseCsvImport } from "../utils/csvImport";
 import { logActivity } from "../utils/activityLog";
 import {
@@ -15,6 +16,17 @@ import { creatorFromRow, toCreatorColumns } from "../utils/creatorRow";
 
 const MASTER_SHEET_KEY = "master_sheet";
 
+// The linked master sheet re-syncs itself once every morning at this
+// hour (local time, 24h clock). Change this one number to move it.
+const AUTO_SYNC_HOUR = 7;
+
+// Local calendar day as "YYYY-MM-DD" — used to remember which morning
+// the auto-sync last ran, so it runs once a day and not once an hour.
+function todayKey(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 // Only these base fields (never remark/quit/commercial — the fields
 // edited inside the app) get pushed during a sheet sync, so a sync never
 // overwrites something someone typed in the CRM itself.
@@ -23,6 +35,39 @@ const SHEET_SYNCED_FIELDS = [
   "followers", "gender", "category", "language", "city", "tier",
 ];
 
+// Columns read back for the rows a sync/import is about to touch. This
+// is every field a sheet sync can write, so the sync can compare what's
+// already saved against what the sheet says and skip re-saving rows that
+// haven't actually changed — the difference between rewriting the whole
+// table every morning and writing only the handful of rows that moved.
+const EXISTING_LOOKUP_COLUMNS =
+  "id, dedupe_key, name, phone, email, platform, profile_link, followers, gender, category, language, city, tier";
+
+// Treats blank, null and undefined as the same thing (the database
+// stores "" as null), and compares numbers as numbers so 5000 and
+// "5000" don't look like a change.
+function sameFieldValue(a, b) {
+  const aEmpty = a == null || a === "";
+  const bEmpty = b == null || b === "";
+  if (aEmpty || bEmpty) return aEmpty && bEmpty;
+  if (typeof a === "number" || typeof b === "number") return Number(a) === Number(b);
+  return String(a).trim() === String(b).trim();
+}
+
+// Narrows a merged result down to just the rows worth writing: brand new
+// creators, plus existing ones where at least one sheet-synced field
+// genuinely differs from what's already in the database. Without a
+// `before` snapshot (mirror mode, which reads a different, lighter set of
+// columns) everything is written, same as before.
+function rowsNeedingSave(merged, existingById) {
+  if (!existingById) return merged;
+  return merged.filter((row) => {
+    const before = existingById.get(row.id);
+    if (!before) return true; // new creator
+    return SHEET_SYNCED_FIELDS.some((f) => !sameFieldValue(before[f], row[f]));
+  });
+}
+
 // Chunk size for any `.in("dedupe_key"/"id", [...])` lookup — keeps a
 // single request's URL/payload reasonable no matter how large a CSV or
 // sheet import is.
@@ -30,6 +75,7 @@ const LOOKUP_CHUNK_SIZE = 300;
 
 export function CreatorsProvider({ children }) {
   const { user, isAdmin } = useAuth();
+  const showToast = useToast();
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -87,6 +133,39 @@ export function CreatorsProvider({ children }) {
   const [importStatus, setImportStatus] = useState("idle");
   const [importError, setImportError] = useState("");
   const syncingRef = useRef(false);
+
+  // Mirrors `sheetLink` for use inside timers and intervals, which would
+  // otherwise keep reading whatever value existed when they were set up.
+  const sheetLinkRef = useRef(null);
+  useEffect(() => {
+    sheetLinkRef.current = sheetLink;
+  }, [sheetLink]);
+
+  // The linked sheet is stored in app_settings (one record, shared by the
+  // whole team) — but nothing ever read it back when the app loaded, so
+  // the link looked like it had disappeared after every refresh and had
+  // to be pasted again. This loads it once the user is known, which is
+  // what makes it stick.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", MASTER_SHEET_KEY)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const record = data?.value;
+        if (!record?.url) return;
+        setSheetLink(record);
+        sheetLinkRef.current = record;
+        setSyncStatus(record.lastSyncedAt ? "synced" : "idle");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const toggleSelected = useCallback((id) => {
     setSelectedIds((prev) => {
@@ -233,19 +312,32 @@ export function CreatorsProvider({ children }) {
   // only ever queries for the specific keys present in `rows`.
   const fetchExistingByDedupeKeys = useCallback(async (rows) => {
     const keys = Array.from(new Set(rows.map(dedupeKey)));
-    const existingMap = new Map(); // dedupe_key -> { id, profileLink, platform }
+    const existingMap = new Map(); // dedupe_key -> current values for that creator
     for (let i = 0; i < keys.length; i += LOOKUP_CHUNK_SIZE) {
       const chunk = keys.slice(i, i + LOOKUP_CHUNK_SIZE);
       const { data, error } = await supabase
         .from("creators")
-        .select("id, dedupe_key, profile_link, platform")
+        .select(EXISTING_LOOKUP_COLUMNS)
         .in("dedupe_key", chunk);
       if (error) {
         console.error("Failed to check for existing creators:", error.message);
         continue;
       }
       (data || []).forEach((row) => {
-        existingMap.set(row.dedupe_key, { id: row.id, profileLink: row.profile_link, platform: row.platform });
+        existingMap.set(row.dedupe_key, {
+          id: row.id,
+          name: row.name || "",
+          phone: row.phone || "",
+          email: row.email || "",
+          platform: row.platform || "",
+          profileLink: row.profile_link || "",
+          followers: row.followers || 0,
+          gender: row.gender || "",
+          category: row.category || "",
+          language: row.language || "",
+          city: row.city || "",
+          tier: row.tier || "",
+        });
       });
     }
     return existingMap;
@@ -328,7 +420,7 @@ export function CreatorsProvider({ children }) {
   }, []);
 
   const syncNow = useCallback(
-    async (rawUrl, { mirror = false } = {}) => {
+    async (rawUrl, { mirror = false, auto = false } = {}) => {
       if (!isAdmin) return;
       setSyncStatus("syncing");
       try {
@@ -359,11 +451,22 @@ export function CreatorsProvider({ children }) {
               const existingMap = await fetchExistingByDedupeKeys(rows);
               const existingSubset = Array.from(existingMap.values());
               const { merged, added, updated, addedKeys } = syncCreators(existingSubset, rows, { mirror: false });
-              return { merged, added, updated, removed: 0, addedKeys, rowErrors: [] };
+              // Snapshot of what these creators looked like before the
+              // merge, so only genuinely changed rows get written.
+              const existingById = new Map(existingSubset.map((c) => [c.id, c]));
+              return { merged, added, updated, removed: 0, addedKeys, rowErrors: [], existingById };
             })();
 
         const { merged, added, updated, removed, addedKeys } = result;
-        await pushBaseFieldsToSupabase(merged, "sheet", new Set(addedKeys));
+
+        // The sheet is mostly the same 3,000-odd rows every single day.
+        // Writing all of them back each time is what made a sync slow and
+        // heavy; this saves only the rows whose values actually differ.
+        const toSave = rowsNeedingSave(merged, result.existingById);
+        if (toSave.length > 0) {
+          await pushBaseFieldsToSupabase(toSave, "sheet", new Set(addedKeys));
+        }
+        let somethingChanged = toSave.length > 0;
 
         if (mirror) {
           const mergedIds = new Set(merged.map((c) => c.id));
@@ -376,13 +479,26 @@ export function CreatorsProvider({ children }) {
               .eq("source", "sheet");
             if (deleteError) {
               console.error("Failed to remove creators no longer in the sheet:", deleteError.message);
+            } else {
+              somethingChanged = true;
             }
           }
         }
 
-        bumpRefreshSignal();
+        // Reloading the creators table throws whoever's using it back to
+        // the top, so it only happens when the sync actually changed
+        // something. A morning sync that finds nothing new leaves the
+        // screen exactly as it was.
+        if (somethingChanged) bumpRefreshSignal();
 
-        const record = { url: rawUrl, lastSyncedAt: new Date().toISOString(), mirror };
+        const record = {
+          url: rawUrl,
+          lastSyncedAt: new Date().toISOString(),
+          mirror,
+          // Which morning the auto-sync last ran. A manual sync must not
+          // wipe this, or the 7 AM sync would fire again the same day.
+          autoSyncedOn: auto ? todayKey() : sheetLinkRef.current?.autoSyncedOn ?? null,
+        };
         const { error: settingsError } = await supabase.from("app_settings").upsert(
           { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
           { onConflict: "key" }
@@ -395,8 +511,17 @@ export function CreatorsProvider({ children }) {
 
         setSyncStatus("synced");
         setSyncError("");
-        logActivity(user, "sheet_synced", { added, updated, removed: mirror ? removed : 0 });
-        return { added, updated, removed, rowErrors: result.rowErrors || [] };
+        logActivity(user, "sheet_synced", {
+          added,
+          duplicates: updated,
+          changed: toSave.length,
+          removed: mirror ? removed : 0,
+          auto,
+        });
+        // What the merge internally calls an "updated" row is a sheet row
+        // that already exists in the portal — reported to the team as a
+        // duplicate, which is the word everyone actually uses for it.
+        return { added, duplicates: updated, changed: toSave.length, removed, rowErrors: result.rowErrors || [] };
       } catch (err) {
         setSyncStatus("error");
         setSyncError(err?.message || "Something went wrong while syncing.");
@@ -405,6 +530,82 @@ export function CreatorsProvider({ children }) {
     },
     [isAdmin, pushBaseFieldsToSupabase, bumpRefreshSignal, user, fetchAllSheetSourced, fetchExistingByDedupeKeys]
   );
+
+  // ── Daily 7 AM sheet sync ──────────────────────────────────────────
+  // This runs in the browser, not on a server: from 7 AM local time
+  // onward, the first admin tab that's open that day runs the sync once
+  // and stamps the date on the shared app_settings record, so no one
+  // else's tab repeats it. If nobody has the portal open at 7, it
+  // catches up the moment an admin opens it later that morning.
+  const runDailyAutoSync = useCallback(async () => {
+    if (!isAdmin || syncingRef.current) return;
+    const now = new Date();
+    if (now.getHours() < AUTO_SYNC_HOUR) return;
+
+    syncingRef.current = true;
+    try {
+      // Re-read the shared record instead of trusting local state, which
+      // may be hours old or already claimed by another admin's tab.
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", MASTER_SHEET_KEY)
+        .maybeSingle();
+      if (error) return;
+
+      const current = data?.value;
+      if (!current?.url) return;
+      setSheetLink(current);
+      sheetLinkRef.current = current;
+
+      const today = todayKey(now);
+      if (current.autoSyncedOn === today) return;
+
+      // Claim the morning first, so another tab checking at the same
+      // moment sees it as taken rather than syncing a second time.
+      const claimed = { ...current, autoSyncedOn: today };
+      const { error: claimError } = await supabase
+        .from("app_settings")
+        .upsert({ key: MASTER_SHEET_KEY, value: claimed, updated_by: user?.id }, { onConflict: "key" });
+      if (claimError) return;
+      setSheetLink(claimed);
+      sheetLinkRef.current = claimed;
+
+      const result = await syncNow(current.url, { mirror: Boolean(current.mirror), auto: true });
+      if (!result) return;
+      showToast(
+        `Morning sync: ${result.added} added, ${result.duplicates} duplicate${result.duplicates === 1 ? "" : "s"}` +
+          (current.mirror ? `, ${result.removed} removed` : ""),
+        true
+      );
+    } catch (err) {
+      console.error("Morning sheet sync failed:", err?.message || err);
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [isAdmin, user, syncNow, showToast]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    // Deferred by a tick rather than run inline, so the first check
+    // happens after this render commits instead of during it.
+    const kickoff = setTimeout(runDailyAutoSync, 0);
+    // Checked every minute so a tab left open overnight syncs at 7 on its
+    // own; the focus/visibility listeners cover a laptop waking from
+    // sleep, where timers can be badly delayed.
+    const timer = setInterval(runDailyAutoSync, 60 * 1000);
+    const onWake = () => {
+      if (document.visibilityState === "visible") runDailyAutoSync();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      clearTimeout(kickoff);
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, [isAdmin, runDailyAutoSync]);
 
   const importFromSheet = useCallback(
     async (rawUrl) => {
