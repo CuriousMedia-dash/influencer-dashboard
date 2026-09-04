@@ -140,6 +140,10 @@ export function CampaignsProvider({ children }) {
     const { data: campaignRows, error: campErr } = await supabase
       .from("campaigns")
       .select("*")
+      // Deleted campaigns are only marked, never removed — they're
+      // filtered out here rather than destroyed, so everything on them
+      // (costs, stages, payments, remarks) survives a mistaken delete.
+      .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     if (campErr) {
@@ -259,7 +263,10 @@ export function CampaignsProvider({ children }) {
   const deleteCampaign = useCallback(async (campaignId) => {
     const campaign = campaigns.find((c) => c.id === campaignId);
     setCampaigns((prev) => prev.filter((c) => c.id !== campaignId));
-    const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+    const { error } = await supabase
+      .from("campaigns")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", campaignId);
     if (error) console.error("Failed to delete campaign:", error.message);
     logActivity(user, "campaign_deleted", { name: campaign?.name });
   }, [campaigns, user]);

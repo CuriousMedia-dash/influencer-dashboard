@@ -166,7 +166,7 @@ export default function CampaignDetails() {
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         title="Delete campaign?"
-        description={`This will permanently delete "${campaign.name}" and remove all creator links inside it. This can't be undone.`}
+        description={`This removes "${campaign.name}" from your campaigns list. Nothing is destroyed \u2014 everything inside it is kept in the database and can be restored if this was a mistake.`}
       >
         <div className="flex gap-2">
           <button

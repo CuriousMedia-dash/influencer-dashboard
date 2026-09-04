@@ -6,7 +6,6 @@ import { useToast } from "../hooks/useToast";
 import { dedupeKey, syncCreators, parseCsvImport } from "../utils/csvImport";
 import { logActivity } from "../utils/activityLog";
 import {
-  syncFromSheetUrl,
   fetchSheetAllTabsCsv,
   fetchSheetCsv,
   isGoogleSheetsShareUrl,
@@ -390,74 +389,42 @@ export function CreatorsProvider({ children }) {
 
   // Admin-only Google Sheet sync. Matching against existing creators is
   // done via a DB dedupe-key lookup scoped to just the sheet's own rows
-  // (same approach as CSV import) — EXCEPT in mirror mode, which by
-  // definition needs to see every currently sheet-sourced creator (not
-  // just ones the new sheet data happens to match) in order to detect
-  // which ones are no longer in the sheet at all. That one path scales
-  // with "how many sheet-sourced creators exist," not with the total
-  // creators table — worth knowing if the linked sheet itself is ever
-  // expected to grow into the tens of thousands.
-  const fetchAllSheetSourced = useCallback(async () => {
-    const out = [];
-    let offset = 0;
-    const CHUNK = 1000;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await supabase
-        .from("creators")
-        .select("id, profile_link, platform")
-        .eq("source", "sheet")
-        .range(offset, offset + CHUNK - 1);
-      if (error) {
-        console.error("Failed to load sheet-sourced creators:", error.message);
-        break;
-      }
-      (data || []).forEach((row) => out.push({ id: row.id, profileLink: row.profile_link, platform: row.platform }));
-      if (!data || data.length < CHUNK) break;
-      offset += CHUNK;
-    }
-    return out;
-  }, []);
-
+  // (same approach as CSV import), so a sync never loads the whole
+  // creators table.
+  //
+  // A sync only ever adds and updates. It does not delete: anyone in the
+  // portal who isn't in the sheet is simply left alone. That's
+  // deliberate — the old "mirror this sheet exactly" mode permanently
+  // deleted those creators, which is far too destructive to run
+  // unattended every morning.
   const syncNow = useCallback(
-    async (rawUrl, { mirror = false, auto = false } = {}) => {
+    async (rawUrl, { auto = false } = {}) => {
       if (!isAdmin) return;
       setSyncStatus("syncing");
       try {
-        const beforeSync = mirror
-          ? await fetchAllSheetSourced()
-          : []; // populated per-row below for non-mirror via existingMap
-
-        // For non-mirror syncs, the caller only needs to know about
-        // creators that could plausibly match one of the incoming rows —
-        // syncFromSheetUrl/syncCreators only uses `existing` to build a
-        // link-match index, so a targeted subset behaves identically to
+        // Only creators that could plausibly match one of the incoming
+        // rows are looked up — syncCreators only uses `existing` to build
+        // a link-match index, so a targeted subset behaves identically to
         // passing the whole table, without ever loading it.
-        const result = mirror
-          ? await syncFromSheetUrl(rawUrl, beforeSync, { mirror: true })
-          : await (async () => {
-              // Peek at the sheet rows first so we know which dedupe keys
-              // to look up — syncFromSheetUrl already does its own fetch
-              // internally, so this fetches the sheet's CSV rows here
-              // too and passes a pre-matched `existing` subset in.
-              let rows = [];
-              if (isGoogleSheetsShareUrl(rawUrl)) {
-                const tabs = await fetchSheetAllTabsCsv(rawUrl);
-                tabs.forEach(({ csv }) => rows.push(...parseCsvImport(csv).rows));
-              } else {
-                const text = await fetchSheetCsv(normaliseSheetUrl(rawUrl));
-                rows = parseCsvImport(text).rows;
-              }
-              const existingMap = await fetchExistingByDedupeKeys(rows);
-              const existingSubset = Array.from(existingMap.values());
-              const { merged, added, updated, addedKeys } = syncCreators(existingSubset, rows, { mirror: false });
-              // Snapshot of what these creators looked like before the
-              // merge, so only genuinely changed rows get written.
-              const existingById = new Map(existingSubset.map((c) => [c.id, c]));
-              return { merged, added, updated, removed: 0, addedKeys, rowErrors: [], existingById };
-            })();
+        const result = await (async () => {
+          let rows = [];
+          if (isGoogleSheetsShareUrl(rawUrl)) {
+            const tabs = await fetchSheetAllTabsCsv(rawUrl);
+            tabs.forEach(({ csv }) => rows.push(...parseCsvImport(csv).rows));
+          } else {
+            const text = await fetchSheetCsv(normaliseSheetUrl(rawUrl));
+            rows = parseCsvImport(text).rows;
+          }
+          const existingMap = await fetchExistingByDedupeKeys(rows);
+          const existingSubset = Array.from(existingMap.values());
+          const { merged, added, updated, addedKeys } = syncCreators(existingSubset, rows, { mirror: false });
+          // Snapshot of what these creators looked like before the
+          // merge, so only genuinely changed rows get written.
+          const existingById = new Map(existingSubset.map((c) => [c.id, c]));
+          return { merged, added, updated, addedKeys, rowErrors: [], existingById };
+        })();
 
-        const { merged, added, updated, removed, addedKeys } = result;
+        const { merged, added, updated, addedKeys } = result;
 
         // The sheet is mostly the same 3,000-odd rows every single day.
         // Writing all of them back each time is what made a sync slow and
@@ -466,24 +433,7 @@ export function CreatorsProvider({ children }) {
         if (toSave.length > 0) {
           await pushBaseFieldsToSupabase(toSave, "sheet", new Set(addedKeys));
         }
-        let somethingChanged = toSave.length > 0;
-
-        if (mirror) {
-          const mergedIds = new Set(merged.map((c) => c.id));
-          const removedIds = beforeSync.filter((c) => !mergedIds.has(c.id)).map((c) => c.id);
-          if (removedIds.length > 0) {
-            const { error: deleteError } = await supabase
-              .from("creators")
-              .delete()
-              .in("id", removedIds)
-              .eq("source", "sheet");
-            if (deleteError) {
-              console.error("Failed to remove creators no longer in the sheet:", deleteError.message);
-            } else {
-              somethingChanged = true;
-            }
-          }
-        }
+        const somethingChanged = toSave.length > 0;
 
         // Reloading the creators table throws whoever's using it back to
         // the top, so it only happens when the sync actually changed
@@ -494,7 +444,6 @@ export function CreatorsProvider({ children }) {
         const record = {
           url: rawUrl,
           lastSyncedAt: new Date().toISOString(),
-          mirror,
           // Which morning the auto-sync last ran. A manual sync must not
           // wipe this, or the 7 AM sync would fire again the same day.
           autoSyncedOn: auto ? todayKey() : sheetLinkRef.current?.autoSyncedOn ?? null,
@@ -515,20 +464,19 @@ export function CreatorsProvider({ children }) {
           added,
           duplicates: updated,
           changed: toSave.length,
-          removed: mirror ? removed : 0,
           auto,
         });
         // What the merge internally calls an "updated" row is a sheet row
         // that already exists in the portal — reported to the team as a
         // duplicate, which is the word everyone actually uses for it.
-        return { added, duplicates: updated, changed: toSave.length, removed, rowErrors: result.rowErrors || [] };
+        return { added, duplicates: updated, changed: toSave.length, rowErrors: result.rowErrors || [] };
       } catch (err) {
         setSyncStatus("error");
         setSyncError(err?.message || "Something went wrong while syncing.");
         throw err;
       }
     },
-    [isAdmin, pushBaseFieldsToSupabase, bumpRefreshSignal, user, fetchAllSheetSourced, fetchExistingByDedupeKeys]
+    [isAdmin, pushBaseFieldsToSupabase, bumpRefreshSignal, user, fetchExistingByDedupeKeys]
   );
 
   // ── Daily 7 AM sheet sync ──────────────────────────────────────────
@@ -571,11 +519,10 @@ export function CreatorsProvider({ children }) {
       setSheetLink(claimed);
       sheetLinkRef.current = claimed;
 
-      const result = await syncNow(current.url, { mirror: Boolean(current.mirror), auto: true });
+      const result = await syncNow(current.url, { auto: true });
       if (!result) return;
       showToast(
-        `Morning sync: ${result.added} added, ${result.duplicates} duplicate${result.duplicates === 1 ? "" : "s"}` +
-          (current.mirror ? `, ${result.removed} removed` : ""),
+        `Morning sync: ${result.added} added, ${result.duplicates} duplicate${result.duplicates === 1 ? "" : "s"}`,
         true
       );
     } catch (err) {
@@ -647,23 +594,6 @@ export function CreatorsProvider({ children }) {
     setSyncStatus("not_connected");
   }, [isAdmin]);
 
-  const setSheetMirror = useCallback(
-    async (mirror) => {
-      if (!isAdmin || !sheetLink?.url) return;
-      const record = { ...sheetLink, mirror };
-      const { error } = await supabase.from("app_settings").upsert(
-        { key: MASTER_SHEET_KEY, value: record, updated_by: user?.id },
-        { onConflict: "key" }
-      );
-      if (error) {
-        console.error("Failed to update mirror setting:", error.message);
-        return;
-      }
-      setSheetLink(record);
-    },
-    [isAdmin, sheetLink, user]
-  );
-
   const value = useMemo(
     () => ({
       cacheCreators,
@@ -686,7 +616,6 @@ export function CreatorsProvider({ children }) {
       syncError,
       syncNow,
       unlinkSheet,
-      setSheetMirror,
       importFromSheet,
       importStatus,
       importError,
@@ -712,7 +641,6 @@ export function CreatorsProvider({ children }) {
       syncError,
       syncNow,
       unlinkSheet,
-      setSheetMirror,
       importFromSheet,
       importStatus,
       importError,

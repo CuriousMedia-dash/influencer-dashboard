@@ -34,7 +34,6 @@ export default function ImportCreatorsModal({ open, onClose }) {
     syncStatus,
     syncNow,
     unlinkSheet,
-    setSheetMirror,
     isAdmin,
   } = useCreators();
   const showToast = useToast();
@@ -57,14 +56,6 @@ export default function ImportCreatorsModal({ open, onClose }) {
   const [linkInput, setLinkInput] = useState("");
   const [linkError, setLinkError] = useState("");
   const [syncSummary, setSyncSummary] = useState(null);
-  // Follows the saved sheet's own setting until the user actually ticks
-  // the box themselves. The saved sheet is loaded from the database just
-  // after the app starts, which can land after this modal has already
-  // mounted — reading it live like this keeps the checkbox correct
-  // instead of freezing whatever was known at mount.
-  const [mirrorOverride, setMirrorOverride] = useState(null);
-  const mirrorMode = mirrorOverride ?? Boolean(sheetLink?.mirror);
-  const setMirrorMode = setMirrorOverride;
   const [editingLink, setEditingLink] = useState(false);
   const syncing = syncStatus === "syncing";
 
@@ -151,14 +142,13 @@ export default function ImportCreatorsModal({ open, onClose }) {
     setLinkError("");
     setSyncSummary(null);
     try {
-      const result = await syncNow(rawUrl, { mirror: mirrorMode });
+      const result = await syncNow(rawUrl);
       if (!result) return;
-      const { added, duplicates, removed, rowErrors } = result;
+      const { added, duplicates, rowErrors } = result;
       setEditingLink(false);
-      setSyncSummary({ added, duplicates, removed, rowErrors });
+      setSyncSummary({ added, duplicates, rowErrors });
       showToast(
         `Synced: ${added} added, ${duplicates} duplicate${duplicates === 1 ? "" : "s"}` +
-          (mirrorMode ? `, ${removed} removed` : "") +
           (rowErrors.length > 0 ? `, ${rowErrors.length} row${rowErrors.length === 1 ? "" : "s"} skipped (errors)` : ""),
         true
       );
@@ -367,26 +357,13 @@ export default function ImportCreatorsModal({ open, onClose }) {
             </div>
           )}
 
-          <label
-            className="mb-4 flex items-start gap-2 rounded-[10px] border p-3 cursor-pointer"
-            style={{ borderColor: "var(--ln)", background: "var(--up)" }}
+          <div
+            className="mb-4 rounded-[10px] border p-3 text-xs leading-relaxed"
+            style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
           >
-            <input
-              type="checkbox"
-              checked={mirrorMode}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setMirrorMode(next);
-                if (sheetLink?.url) setSheetMirror(next);
-              }}
-              className="mt-[2px] h-3.5 w-3.5 cursor-pointer accent-[#1E6FE0]"
-            />
-            <span className="text-xs leading-relaxed" style={{ color: "var(--ink2)" }}>
-              <span className="font-semibold" style={{ color: "var(--ink)" }}>Mirror this sheet exactly</span> — also
-              remove any creator that came from this sheet and is no longer a row in it. Creators added via CSV
-              upload are never affected by this, no matter what. Leave off to only ever add/update, never delete.
-            </span>
-          </label>
+            A sync only adds new influencers and updates the ones already here. It never deletes: anyone in the
+            portal who isn{"\u2019"}t in the sheet is left exactly as they are.
+          </div>
 
           {linkError && (
             <div className="mb-4 flex items-start gap-2 rounded-[10px] border p-3 text-xs" style={{ borderColor: "rgba(224,82,75,.3)", background: "rgba(224,82,75,.06)", color: "#E0524B" }}>
@@ -399,7 +376,6 @@ export default function ImportCreatorsModal({ open, onClose }) {
             <div className="mb-4 flex items-center gap-2 rounded-[10px] border p-3 text-xs font-medium" style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}>
               <CheckCircle2 size={14} className="flex-shrink-0" />
               {syncSummary.added} added, {syncSummary.duplicates} duplicate{syncSummary.duplicates === 1 ? "" : "s"}
-              {mirrorMode && `, ${syncSummary.removed} removed`}
               {syncSummary.rowErrors?.length > 0 && `, ${syncSummary.rowErrors.length} row${syncSummary.rowErrors.length === 1 ? "" : "s"} skipped`}
             </div>
           )}
