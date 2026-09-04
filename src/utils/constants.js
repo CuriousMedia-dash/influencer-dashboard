@@ -149,9 +149,6 @@ export const EXECUTION_STAGES = [
 
 export const EXECUTION_STAGE_COLORS = {
   "Concept Shared": "#8FA3BC",
-  // Kept only so rows saved before this rename still show their old
-  // label instead of an empty dropdown. Not offered as a new choice.
-  "Draft Video": "#8FA3BC",
   "Script Received": "#3F8FE0",
   "Script Approved": "#1E6FE0",
   "Draft Video Received": "#6E5BD6",

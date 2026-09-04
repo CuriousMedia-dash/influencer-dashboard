@@ -294,14 +294,14 @@ export default function CampaignCreatorsTable({
               const lc = LANG_COLORS[creator.language] || "#1E6FE0";
               const locked = link.lockStatus === "locked";
               const negColor = NEGOTIATION_STATUS_COLORS[link.negotiationStatus] || "#8FA3BC";
-              const stageColor = EXECUTION_STAGE_COLORS[link.executionStage] || "#8FA3BC";
-              // A row saved before a stage was renamed still has the old
-              // value; keep it in the list for that row only, so the
-              // dropdown shows it instead of appearing blank.
-              const stageOptions =
-                link.executionStage && !EXECUTION_STAGES.includes(link.executionStage)
-                  ? [...EXECUTION_STAGES, link.executionStage]
-                  : EXECUTION_STAGES;
+              const stageColor = EXECUTION_STAGE_COLORS[link.executionStage] || EXECUTION_STAGE_COLORS[DEFAULT_EXECUTION_STAGE];
+              // Anything saved under a stage name that no longer exists
+              // (the old "Draft Video") simply shows as the default
+              // rather than being added to the dropdown as an extra
+              // choice.
+              const currentStage = EXECUTION_STAGES.includes(link.executionStage)
+                ? link.executionStage
+                : DEFAULT_EXECUTION_STAGE;
               const isLiveStage = link.executionStage === "Live Video Date";
               const rowKey = `${link.creatorId}::${platform?.platform || "no-platform"}`;
               const stageQuit = link.executionStage === "Quit";
@@ -471,7 +471,7 @@ export default function CampaignCreatorsTable({
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
                     <div className="flex flex-col gap-1">
                       <select
-                        value={link.executionStage || DEFAULT_EXECUTION_STAGE}
+                        value={currentStage}
                         onChange={(e) => onUpdateLink(link.creatorId, { executionStage: e.target.value })}
                         className="w-full rounded-full border px-2 py-1 text-[11px] outline-none"
                         style={{
@@ -480,7 +480,7 @@ export default function CampaignCreatorsTable({
                           background: hex2rgba(stageColor, 0.08),
                         }}
                       >
-                        {stageOptions.map((s) => (
+                        {EXECUTION_STAGES.map((s) => (
                           <option key={s} value={s} style={{ color: "#10243E" }}>
                             {s}
                           </option>
