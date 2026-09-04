@@ -2,8 +2,10 @@
 // Secrets:  supabase secrets set RESEND_API_KEY=re_xxx RESEND_FROM="Curious Media <hello@yourdomain.com>"
 // (RESEND_FROM must be on a domain verified in your Resend account.)
 //
-// Called from the app as:
-//   supabase.functions.invoke("send-acquisition-mail", { body: { bcc, subject, html, attachments } })
+// Called from the app as either:
+//   { bcc: [...], subject, html, attachments }  -> one mail, recipients hidden
+//   { to:  [...], subject, html, attachments }  -> a direct mail to those addresses
+// Exactly one of `to` or `bcc` is required.
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 
@@ -30,17 +32,27 @@ serve(async (req) => {
   }
 
   try {
-    const { bcc, subject, html, attachments } = await req.json();
+    const { to, bcc, subject, html, attachments } = await req.json();
 
-    if (!Array.isArray(bcc) || bcc.length === 0) {
-      return new Response(JSON.stringify({ error: "bcc must be a non-empty array of emails" }), {
+    const toList = Array.isArray(to) ? to.filter(Boolean) : [];
+    const bccList = Array.isArray(bcc) ? bcc.filter(Boolean) : [];
+
+    if (toList.length === 0 && bccList.length === 0) {
+      return new Response(JSON.stringify({ error: "Provide either `to` or `bcc` as a non-empty array of emails" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const chunks = [];
-    for (let i = 0; i < bcc.length; i += BCC_CHUNK_SIZE) chunks.push(bcc.slice(i, i + BCC_CHUNK_SIZE));
+    // A direct send goes out as one mail to the named addresses. A bcc
+    // send is chunked, since a big hidden list exceeds what one call
+    // takes.
+    const chunks: string[][] = [];
+    if (toList.length > 0) {
+      chunks.push(toList);
+    } else {
+      for (let i = 0; i < bccList.length; i += BCC_CHUNK_SIZE) chunks.push(bccList.slice(i, i + BCC_CHUNK_SIZE));
+    }
 
     const results = [];
     for (const chunk of chunks) {
@@ -52,8 +64,11 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           from: RESEND_FROM,
-          to: RESEND_FROM, // send "to" self, real recipients hidden in bcc
-          bcc: chunk,
+          // Direct send: the recipients go in "to" and see a normal,
+          // personally addressed mail. Hidden send: "to" is us and the
+          // real recipients sit in bcc.
+          to: toList.length > 0 ? chunk : RESEND_FROM,
+          ...(toList.length > 0 ? {} : { bcc: chunk }),
           subject,
           html,
           attachments: (attachments || []).map((a: { filename: string; content: string }) => ({

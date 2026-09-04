@@ -231,7 +231,7 @@ function ResourceTabContent({ kind }) {
         </main>
       </div>
 
-      {mailOpen && <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} categories={resourceConfig.categories} />}
+      {mailOpen && <DeckEditorModal open={mailOpen} onClose={() => setMailOpen(false)} recipients={selectedRows} categories={resourceConfig.categories} resourceKind={kind} />}
     </>
   );
 }
