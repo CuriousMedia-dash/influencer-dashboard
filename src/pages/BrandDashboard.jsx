@@ -462,6 +462,34 @@ function BrandDashboardView({ campaignId, template }) {
         return;
       }
       setData(result);
+
+      // The address lives on campaign_creator_links but isn't part of
+      // what get_brand_dashboard returns, so a refresh used to wipe it
+      // from view — it only ever appeared because a live update had
+      // pushed it in. Read it straight from the table as a follow-up. If
+      // the brand role isn't allowed to select from that table, this
+      // quietly does nothing and the column just stays blank, exactly as
+      // before.
+      const { data: addressRows, error: addressError } = await supabaseBrand
+        .from("campaign_creator_links")
+        .select("creator_id, address")
+        .eq("campaign_id", campaignId);
+      if (cancelled) return;
+      if (addressError) {
+        console.warn("Couldn't load addresses:", addressError.message);
+        return;
+      }
+      const addressByCreator = new Map((addressRows || []).map((r) => [r.creator_id, r.address]));
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.map((r) =>
+                addressByCreator.has(r.creatorId) ? { ...r, address: addressByCreator.get(r.creatorId) } : r
+              ),
+            }
+          : prev
+      );
     }
     load();
     return () => { cancelled = true; };

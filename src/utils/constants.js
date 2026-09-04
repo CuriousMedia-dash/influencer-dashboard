@@ -163,5 +163,9 @@ export const EXECUTION_STAGE_COLORS = {
 // The stage every newly added creator starts on.
 export const DEFAULT_EXECUTION_STAGE = "Concept Shared";
 
+// Row tint for a creator the brand has confirmed (locked) on their own
+// dashboard.
+export const BRAND_LOCKED_COLOR = "#2BAE66";
+
 // Row-level "creator quit" flag color (used for the flag toggle + red row).
 export const QUIT_FLAG_COLOR = "#E0524B";

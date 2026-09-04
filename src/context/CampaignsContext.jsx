@@ -44,6 +44,10 @@ function linkFromRow(row) {
     // Delivery address for this creator on this campaign specifically —
     // the same creator can have a different address on another campaign.
     address: row.address ?? "",
+    // Set by the brand on their own dashboard, never from this side.
+    // Carried through so the row can show as confirmed here too.
+    brandLocked: row.brand_locked || false,
+    brandLockedAt: row.brand_locked_at ?? "",
   };
 }
 
@@ -175,6 +179,40 @@ export function CampaignsProvider({ children }) {
     }
     loadAll();
   }, [user, loadAll]);
+
+  // The brand dashboard writes to the same campaign_creator_links rows
+  // this page reads (locking a creator, agreeing a cost). Without a
+  // subscription those changes only appeared after a manual refresh, so
+  // a row the brand had just locked still looked open on this side.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("campaign-links-sync")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaign_creator_links" },
+        (payload) => {
+          const row = payload.new;
+          if (!row?.campaign_id) return;
+          setCampaigns((prev) =>
+            prev.map((c) =>
+              c.id !== row.campaign_id
+                ? c
+                : {
+                    ...c,
+                    creatorLinks: c.creatorLinks.map((l) =>
+                      l.creatorId === row.creator_id ? linkFromRow(row) : l
+                    ),
+                  }
+            )
+          );
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const createCampaign = useCallback(
     async (campaignInput) => {

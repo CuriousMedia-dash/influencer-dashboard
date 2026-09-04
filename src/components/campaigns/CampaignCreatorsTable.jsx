@@ -17,6 +17,7 @@ import {
   NEGOTIATION_STATUS_COLORS,
   EXECUTION_STAGES,
   DEFAULT_EXECUTION_STAGE,
+  BRAND_LOCKED_COLOR,
   EXECUTION_STAGE_COLORS,
   QUIT_FLAG_COLOR,
 } from "../../utils/constants";
@@ -305,13 +306,20 @@ export default function CampaignCreatorsTable({
               const rowKey = `${link.creatorId}::${platform?.platform || "no-platform"}`;
               const stageQuit = link.executionStage === "Quit";
               const quit = Boolean(creator.quit) || stageQuit;
+              // Confirmed by the brand on their dashboard. A creator who
+              // has quit stays red — that matters more than a stale
+              // confirmation.
+              const brandLocked = Boolean(link.brandLocked) && !quit;
 
               return (
                 <tr
                   key={rowKey}
+                  title={brandLocked ? "Confirmed by the brand" : undefined}
                   style={
                     quit
                       ? { background: hex2rgba(QUIT_FLAG_COLOR, 0.1) }
+                      : brandLocked
+                      ? { background: hex2rgba(BRAND_LOCKED_COLOR, 0.12) }
                       : undefined
                   }
                 >
