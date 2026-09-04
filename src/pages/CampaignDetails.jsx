@@ -138,9 +138,15 @@ export default function CampaignDetails() {
       <CampaignCreatorsTable
         links={campaign.creatorLinks}
         getCreatorById={getCreatorById}
-        onUpdateLink={(creatorId, fields) =>
-          updateCreatorLink(campaign.id, creatorId, fields)
-        }
+        onUpdateLink={(creatorId, fields) => {
+          updateCreatorLink(campaign.id, creatorId, fields);
+          // A remark written here is also the influencer's remark on the
+          // All Influencers tab. If they're in several campaigns, the
+          // most recently written one is what shows there.
+          if (Object.prototype.hasOwnProperty.call(fields, "remark")) {
+            updateCreatorField(creatorId, "remark", fields.remark);
+          }
+        }}
         onUpdateCreatorField={updateCreatorField}
         onRemoveLink={(creatorId) => {
           removeCreatorFromCampaign(campaign.id, creatorId);
