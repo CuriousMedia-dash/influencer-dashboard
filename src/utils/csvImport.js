@@ -10,6 +10,9 @@ const HEADER_MAP = {
   name: "name",
   creator: "name",
   "creator name": "name",
+  // Same column, whichever word the sheet happens to use.
+  influencer: "name",
+  "influencer name": "name",
 
   platform: "platform",
 
@@ -36,6 +39,7 @@ const HEADER_MAP = {
 
   city: "city",
   "creator city": "city",
+  "influencer city": "city",
   location: "city",
 
   followers: "followers",
@@ -49,6 +53,7 @@ const HEADER_MAP = {
   "channel link": "profileLink",
   instagram: "profileLink",
   "creator link": "profileLink",
+  "influencer link": "profileLink",
   url: "profileLink",
 
   commercial: "commercial",

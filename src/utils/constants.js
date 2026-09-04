@@ -68,6 +68,9 @@ export const TIER_RANGES = {
   nano: [1000, 9999],
   micro: [10000, 99999],
   mega: [100000, 499999],
+  // Mega+ fills what used to be a gap: anyone between 500K and 1M
+  // previously matched no category at all.
+  megaPlus: [500000, 999999],
   celebrity: [1000000, Infinity],
 };
 
@@ -75,6 +78,7 @@ export const TIER_COLORS = {
   nano: "#2BAE66",
   micro: "#3F8FE0",
   mega: "#E08A3B",
+  megaPlus: "#D9662B",
   celebrity: "#E0524B",
 };
 
@@ -82,6 +86,7 @@ export const TIER_LABELS = {
   nano: "Nano",
   micro: "Micro",
   mega: "Mega",
+  megaPlus: "Mega+",
   celebrity: "Celebrity",
 };
 
@@ -89,10 +94,11 @@ export const TIER_RANGE_LABELS = {
   nano: "1K\u201310K",
   micro: "10K\u2013100K",
   mega: "100K\u2013500K",
+  megaPlus: "500K\u20131M",
   celebrity: "1M+",
 };
 
-export const TIERS = ["nano", "micro", "mega", "celebrity"];
+export const TIERS = ["nano", "micro", "mega", "megaPlus", "celebrity"];
 
 // Negotiation status options for campaign-creator links (Phase 4)
 export const NEGOTIATION_STATUSES = [
@@ -132,7 +138,7 @@ export const PAYMENT_TYPE_LABELS = {
 
  // Execution stage options for campaign-creator links.
 export const EXECUTION_STAGES = [
-  "Draft Video",
+  "Concept Shared",
   "Script Received",
   "Script Approved",
   "Draft Video Received",
@@ -142,6 +148,9 @@ export const EXECUTION_STAGES = [
 ];
 
 export const EXECUTION_STAGE_COLORS = {
+  "Concept Shared": "#8FA3BC",
+  // Kept only so rows saved before this rename still show their old
+  // label instead of an empty dropdown. Not offered as a new choice.
   "Draft Video": "#8FA3BC",
   "Script Received": "#3F8FE0",
   "Script Approved": "#1E6FE0",
@@ -150,6 +159,9 @@ export const EXECUTION_STAGE_COLORS = {
   "Live Video Date": "#2BAE66",
   Quit: "#E0524B",
 };
+
+// The stage every newly added creator starts on.
+export const DEFAULT_EXECUTION_STAGE = "Concept Shared";
 
 // Row-level "creator quit" flag color (used for the flag toggle + red row).
 export const QUIT_FLAG_COLOR = "#E0524B";

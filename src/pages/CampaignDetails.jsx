@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Share2, Trash2, Download } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Download, Upload } from "lucide-react";
 import CampaignOverview from "../components/campaigns/CampaignOverview";
 import CampaignCreatorsTable from "../components/campaigns/CampaignCreatorsTable";
 import ShareCampaignModal from "../components/campaigns/ShareCampaignModal";
+import ImportCampaignCreatorsModal from "../components/campaigns/ImportCampaignCreatorsModal";
 import Modal from "../components/ui/Modal";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useCreators } from "../hooks/useCreators";
@@ -24,6 +25,7 @@ export default function CampaignDetails() {
   const showToast = useToast();
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const campaign = getCampaignById(id);
@@ -114,6 +116,15 @@ export default function CampaignDetails() {
         </button>
         <button
           type="button"
+          onClick={() => setImportOpen(true)}
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3.5 py-2 text-xs transition-colors"
+          style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+        >
+          <Upload size={14} />
+          Upload CSV
+        </button>
+        <button
+          type="button"
           onClick={() => setShareOpen(true)}
           className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90"
           style={{ background: "var(--am)" }}
@@ -135,6 +146,13 @@ export default function CampaignDetails() {
           removeCreatorFromCampaign(campaign.id, creatorId);
           showToast("Creator removed from campaign", false);
         }}
+        campaignName={campaign.name}
+      />
+
+      <ImportCampaignCreatorsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        campaignId={campaign.id}
         campaignName={campaign.name}
       />
 

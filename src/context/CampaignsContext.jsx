@@ -8,6 +8,7 @@ import { CampaignsContext } from "./campaignsContextDef";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../hooks/useAuth";
 import { logActivity } from "../utils/activityLog";
+import { DEFAULT_EXECUTION_STAGE } from "../utils/constants";
 
 // ---- Row <-> app-shape translation ----------------------------------
 // The database uses snake_case columns; the rest of the app expects the
@@ -25,7 +26,7 @@ function linkFromRow(row) {
     lockStatus: row.lock_status || "unlocked",
     emailSent: row.email_sent || false,
     approvalReceived: row.approval_received || false,
-    executionStage: row.execution_stage || "Draft Video",
+    executionStage: row.execution_stage || DEFAULT_EXECUTION_STAGE,
     liveLink: row.live_link ?? "",
     liveLinks: Array.isArray(row.live_links) ? row.live_links : [],
     deliverables: row.deliverables ?? "",
@@ -40,6 +41,9 @@ function linkFromRow(row) {
     fullAmount: row.full_amount ?? "",
     fullPaid: row.full_paid || false,
     remark: row.remark ?? "",
+    // Delivery address for this creator on this campaign specifically —
+    // the same creator can have a different address on another campaign.
+    address: row.address ?? "",
   };
 }
 
@@ -85,6 +89,7 @@ const LINK_FIELD_MAP = {
   fullAmount: "full_amount",
   fullPaid: "full_paid",
   remark: "remark",
+  address: "address",
 };
 
 function toLinkColumns(fields) {
@@ -253,7 +258,7 @@ export function CampaignsProvider({ children }) {
         creator_id: cid,
         negotiation_status: "Not Contacted",
         lock_status: "unlocked",
-        execution_stage: "Draft Video",
+        execution_stage: DEFAULT_EXECUTION_STAGE,
       }));
 
       const { error } = await supabase.from("campaign_creator_links").insert(rows);

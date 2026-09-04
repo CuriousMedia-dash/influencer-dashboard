@@ -39,7 +39,7 @@ export function usePaginatedCreators(filters, sortKey, sortDir, refreshSignal) {
     g: Array.from(filters.activeGenders || []),
     t: Array.from(filters.activeTiers || []),
     r: filters.range,
-    s: filters.debouncedSearch,
+    s: filters.search,
   });
 
   const fetchPage = useCallback(async (offset, myRequestId) => {

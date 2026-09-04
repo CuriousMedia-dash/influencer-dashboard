@@ -1,4 +1,5 @@
 import { primaryLink } from "./format";
+import { DEFAULT_EXECUTION_STAGE } from "./constants";
 
 // No-backend "share" links: the campaign snapshot is JSON-encoded, then
 // Base64-URL-encoded, and travels entirely inside the link itself. Whoever
@@ -70,7 +71,7 @@ export function buildShareToken(campaign, getCreatorById) {
       fc: link.finalCost || null,
       remark: link.remark || "",
       lockStatus: link.lockStatus || "unlocked",
-      executionStage: link.executionStage || "Draft Video",
+      executionStage: link.executionStage || DEFAULT_EXECUTION_STAGE,
       liveLink: link.liveLink || "",
       viewership: link.viewership || "",
     };

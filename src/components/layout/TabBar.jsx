@@ -5,7 +5,7 @@
  */
 export default function TabBar({ active, onChange, campaignCount }) {
   const tabs = [
-    { key: "creators", label: "All Creators", icon: "\u25c9" },
+    { key: "creators", label: "All Influencers", icon: "\u25c9" },
     { key: "campaigns", label: "My Campaigns", icon: "\u2691", badge: campaignCount },
   ];
 

@@ -493,6 +493,7 @@ function BrandDashboardView({ campaignId, template }) {
         brandLocked: row.brand_locked,
         brandLockedAt: row.brand_locked_at,
         deliverables: row.deliverables,
+        address: row.address,
         createdAt: row.created_at,
       };
     }
@@ -813,6 +814,7 @@ function BrandDashboardView({ campaignId, template }) {
                   "Creator",
                   "Followers",
                   "Deliverables",
+                  "Address",
                   ...(!isSimple ? ["Proposal Cost", "Counter Cost", "Last Cost", "Final Cost"] : []),
                   "Remarks",
                   "Locked Status",
@@ -834,7 +836,7 @@ function BrandDashboardView({ campaignId, template }) {
                 <Fragment key={group.dateKey}>
                   <tr>
                     <td
-                      colSpan={isSimple ? 7 : 11}
+                      colSpan={isSimple ? 8 : 12}
                       className="border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[.06em]"
                       style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
                     >
@@ -871,6 +873,20 @@ function BrandDashboardView({ campaignId, template }) {
 
                     <td className="border-b px-4 py-3 text-[12px]" style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}>
                       {row.deliverables || <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>}
+                    </td>
+
+                    {/* Delivery address — read-only here; only the agency
+                        team can set or change it. */}
+                    <td
+                      className="border-b px-4 py-3 text-[12px]"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink2)", maxWidth: 240 }}
+                      title={row.address || ""}
+                    >
+                      {row.address ? (
+                        <span className="block whitespace-pre-wrap break-words">{row.address}</span>
+                      ) : (
+                        <span style={{ color: "var(--ink3)" }}>{"\u2014"}</span>
+                      )}
                     </td>
 
                     {!isSimple && (

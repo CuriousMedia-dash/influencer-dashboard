@@ -19,7 +19,7 @@ const GENDER_ICON = { Male: "\u2642", Female: "\u2640", Others: "\u26a5" };
 // grouping/section headers) in the order below. Kept identical to the
 // pre-virtualization version so nothing visually changes.
 const COLUMNS = [
-  { key: "name", label: "Creator", sortable: true, width: 130 },
+  { key: "name", label: "Influencer Name", sortable: true, width: 130 },
   { key: "platform", label: "Platform", sortable: false, width: 92 },
   { key: "followers", label: "Followers", sortable: true, width: 82 },
   { key: "gender", label: "Gender", sortable: true, width: 76 },

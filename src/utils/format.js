@@ -34,6 +34,7 @@ export function hex2rgba(h, a) {
 
 export function getTier(f) {
   if (f >= 1000000) return "celebrity";
+  if (f >= 500000) return "megaPlus";
   if (f >= 100000) return "mega";
   if (f >= 10000) return "micro";
   return "nano";

@@ -16,6 +16,7 @@ import {
   NEGOTIATION_STATUSES,
   NEGOTIATION_STATUS_COLORS,
   EXECUTION_STAGES,
+  DEFAULT_EXECUTION_STAGE,
   EXECUTION_STAGE_COLORS,
   QUIT_FLAG_COLOR,
 } from "../../utils/constants";
@@ -42,6 +43,7 @@ const COLS = [
   ["Deliverables", 150],
   ["Phone", 120],
   ["Email", 170],
+  ["Address", 210],
   ["Negotiation Status", 140],
   ["Commercial", 100],
   ["Locked Price", 100],
@@ -292,6 +294,13 @@ export default function CampaignCreatorsTable({
               const locked = link.lockStatus === "locked";
               const negColor = NEGOTIATION_STATUS_COLORS[link.negotiationStatus] || "#8FA3BC";
               const stageColor = EXECUTION_STAGE_COLORS[link.executionStage] || "#8FA3BC";
+              // A row saved before a stage was renamed still has the old
+              // value; keep it in the list for that row only, so the
+              // dropdown shows it instead of appearing blank.
+              const stageOptions =
+                link.executionStage && !EXECUTION_STAGES.includes(link.executionStage)
+                  ? [...EXECUTION_STAGES, link.executionStage]
+                  : EXECUTION_STAGES;
               const isLiveStage = link.executionStage === "Live Video Date";
               const rowKey = `${link.creatorId}::${platform?.platform || "no-platform"}`;
               const stageQuit = link.executionStage === "Quit";
@@ -375,6 +384,18 @@ export default function CampaignCreatorsTable({
                     </div>
                   </td>
 
+                  {/* Delivery address — belongs to this creator on this
+                      campaign only, and is what the brand dashboard shows
+                      (read-only on their side). */}
+                  <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
+                    <EditableCell
+                      value={link.address}
+                      label="Address"
+                      variant="pill"
+                      onSave={(val) => onUpdateLink(link.creatorId, { address: val })}
+                    />
+                  </td>
+
                   <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
                     <select
                       value={link.negotiationStatus}
@@ -442,7 +463,7 @@ export default function CampaignCreatorsTable({
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
                     <div className="flex flex-col gap-1">
                       <select
-                        value={link.executionStage || "Draft Video"}
+                        value={link.executionStage || DEFAULT_EXECUTION_STAGE}
                         onChange={(e) => onUpdateLink(link.creatorId, { executionStage: e.target.value })}
                         className="w-full rounded-full border px-2 py-1 text-[11px] outline-none"
                         style={{
@@ -451,7 +472,7 @@ export default function CampaignCreatorsTable({
                           background: hex2rgba(stageColor, 0.08),
                         }}
                       >
-                        {EXECUTION_STAGES.map((s) => (
+                        {stageOptions.map((s) => (
                           <option key={s} value={s} style={{ color: "#10243E" }}>
                             {s}
                           </option>

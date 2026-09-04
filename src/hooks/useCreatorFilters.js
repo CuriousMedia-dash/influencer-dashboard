@@ -160,7 +160,11 @@ export function useCreatorFilters() {
       activeGenders,
       activeTiers,
       range,
-      debouncedSearch,
+      // Named `search` on purpose — this is the key applyCreatorFilters
+      // reads. It used to be handed over as `debouncedSearch`, which that
+      // function never looked at, so typing a name refetched the table
+      // but never actually filtered it.
+      search: debouncedSearch,
     }),
     [activeNiches, activeLangs, activeCities, activePlatforms, activeGenders, activeTiers, range, debouncedSearch]
   );
