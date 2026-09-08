@@ -475,10 +475,7 @@ function BrandDashboardView({ campaignId, template }) {
         .select("creator_id, address")
         .eq("campaign_id", campaignId);
       if (cancelled) return;
-      if (addressError) {
-        console.warn("Couldn't load addresses:", addressError.message);
-        return;
-      }
+      if (addressError) console.warn("Couldn't load addresses:", addressError.message);
       const addressByCreator = new Map((addressRows || []).map((r) => [r.creator_id, r.address]));
       setData((prev) =>
         prev
@@ -486,6 +483,37 @@ function BrandDashboardView({ campaignId, template }) {
               ...prev,
               rows: prev.rows.map((r) =>
                 addressByCreator.has(r.creatorId) ? { ...r, address: addressByCreator.get(r.creatorId) } : r
+              ),
+            }
+          : prev
+      );
+
+      // Profile links make the influencer names clickable here. If
+      // get_brand_dashboard doesn't return them, the names render as
+      // plain text — so any that arrived empty are filled in from the
+      // creators table. Blocked by permissions is fine: the names simply
+      // stay unlinked, as they do today.
+      const missingLinkIds = (result.rows || [])
+        .filter((r) => !r.profileLink)
+        .map((r) => r.creatorId)
+        .filter(Boolean);
+      if (missingLinkIds.length === 0) return;
+
+      const { data: creatorRows, error: creatorError } = await supabaseBrand
+        .from("creators")
+        .select("id, profile_link")
+        .in("id", missingLinkIds);
+      if (cancelled || creatorError || !creatorRows?.length) return;
+
+      const linkByCreator = new Map(creatorRows.map((r) => [r.id, r.profile_link]));
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.map((r) =>
+                !r.profileLink && linkByCreator.get(r.creatorId)
+                  ? { ...r, profileLink: linkByCreator.get(r.creatorId) }
+                  : r
               ),
             }
           : prev
@@ -884,7 +912,7 @@ function BrandDashboardView({ campaignId, template }) {
                                 target="_blank"
                                 rel="noreferrer"
                                 title="View profile"
-                                className="underline decoration-1 underline-offset-2"
+                                className="underline decoration-1 underline-offset-2 hover:decoration-2"
                                 style={{ color: "var(--am)" }}
                               >
                                 {row.name}
