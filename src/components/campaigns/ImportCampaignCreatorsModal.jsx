@@ -95,18 +95,21 @@ export default function ImportCampaignCreatorsModal({ open, onClose, campaignId,
       //    skipped, so re-uploading doesn't duplicate a row here either.
       await addCreatorsToCampaign(campaignId, creatorIds);
 
-      // 4. An Address column, if the file had one, belongs to the
-      //    campaign link rather than the influencer — so it's written
-      //    after the links exist. Blank cells are skipped so a partly
-      //    filled column never wipes an address already saved here.
-      const addressByKey = new Map();
+      // 4. Address and Script columns belong to the campaign link
+      //    rather than the influencer, so they're written after the
+      //    links exist. Blank cells are skipped, so a partly filled
+      //    column never wipes something already saved here.
+      const extrasByKey = new Map();
       parsedRows.forEach((row) => {
-        if (row.address) addressByKey.set(dedupeKey(row), row.address);
+        const fields = {};
+        if (row.address) fields.address = row.address;
+        if (row.scriptLink) fields.scriptLink = row.scriptLink;
+        if (Object.keys(fields).length > 0) extrasByKey.set(dedupeKey(row), fields);
       });
-      if (addressByKey.size > 0) {
+      if (extrasByKey.size > 0) {
         for (const [key, creator] of idMap.entries()) {
-          const address = addressByKey.get(key);
-          if (address) await updateCreatorLink(campaignId, creator.id, { address });
+          const fields = extrasByKey.get(key);
+          if (fields) await updateCreatorLink(campaignId, creator.id, fields);
         }
       }
 
@@ -165,8 +168,8 @@ export default function ImportCampaignCreatorsModal({ open, onClose, campaignId,
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={handleFileChange} />
         </label>
         <p className="text-[11px]" style={{ color: "var(--ink3)" }}>
-          Influencer Name and a profile link at minimum. An Address column, if you include one, is saved as
-          their delivery address for this campaign.
+          Influencer Name and a profile link at minimum. Address and Script columns, if you include them, are
+          saved against this campaign.
         </p>
       </div>
 

@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { supabaseBrand } from "../lib/supabaseBrandClient";
 import { useBrandAuth } from "../hooks/useBrandAuth";
 import { fmt, hex2rgba, toHref } from "../utils/format";
+import ScriptLinkCell from "../components/campaigns/ScriptLinkCell";
 import { EXECUTION_STAGE_COLORS } from "../utils/constants";
 import { brandDashboardToCsv, downloadCsv } from "../utils/csvExport";
 import { Lock, Unlock, Sun, Moon, Download, Send, X, CheckCircle2, LogOut, Check } from "lucide-react";
@@ -472,18 +473,24 @@ function BrandDashboardView({ campaignId, template }) {
       // before.
       const { data: addressRows, error: addressError } = await supabaseBrand
         .from("campaign_creator_links")
-        .select("creator_id, address")
+        .select("creator_id, address, script_link")
         .eq("campaign_id", campaignId);
       if (cancelled) return;
       if (addressError) console.warn("Couldn't load addresses:", addressError.message);
-      const addressByCreator = new Map((addressRows || []).map((r) => [r.creator_id, r.address]));
+      const linkExtrasByCreator = new Map((addressRows || []).map((r) => [r.creator_id, r]));
       setData((prev) =>
         prev
           ? {
               ...prev,
-              rows: prev.rows.map((r) =>
-                addressByCreator.has(r.creatorId) ? { ...r, address: addressByCreator.get(r.creatorId) } : r
-              ),
+              rows: prev.rows.map((r) => {
+                const extra = linkExtrasByCreator.get(r.creatorId);
+                if (!extra) return r;
+                return {
+                  ...r,
+                  address: extra.address,
+                  scriptLink: r.scriptLink ?? extra.script_link,
+                };
+              }),
             }
           : prev
       );
@@ -537,6 +544,7 @@ function BrandDashboardView({ campaignId, template }) {
         creatorId: row.creator_id,
         lockedCost: row.locked_cost,
         executionStage: row.execution_stage,
+        scriptLink: row.script_link,
         liveLink: row.live_link,
         liveLinks: Array.isArray(row.live_links) ? row.live_links : [],
         liveDate: row.live_date,
@@ -654,8 +662,11 @@ function BrandDashboardView({ campaignId, template }) {
   useEffect(() => {
     if (!data || !data.campaign) return;
     if (!data.campaign.isBrandViewer) return;
+    // Filled in from the logged-in brand user the first time only.
+    // Once there's a value — whether auto-filled or typed over — it's
+    // left alone, so an edit here isn't undone on the next load.
     const name = data.campaign.brandUserName;
-    if (name && data.campaign.brandClient !== name) {
+    if (name && !data.campaign.brandClient) {
       updateMetaField("brandClient", name);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -850,7 +861,13 @@ function BrandDashboardView({ campaignId, template }) {
         </div>
 
         <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-          <SlabCard label="Client POC">{campaign.brandClient || campaign.client || "\u2014"}</SlabCard>
+          <SlabCard
+            label="Client POC"
+            editable
+            value={campaign.brandClient}
+            onChange={(v) => updateMetaField("brandClient", v)}
+            placeholder={campaign.client || "\u2014"}
+          />
           {!isSimple && (
             <SlabCard label={"Budget (\u20b9)"}>{fmt(liveBudget)}</SlabCard>
           )}
@@ -875,6 +892,7 @@ function BrandDashboardView({ campaignId, template }) {
                   "Remarks",
                   "Locked Status",
                   "Execution Stage",
+                  "Script",
                   "Live Video Link",
                 ].map((h) => (
                   <th
@@ -892,7 +910,7 @@ function BrandDashboardView({ campaignId, template }) {
                 <Fragment key={group.dateKey}>
                   <tr>
                     <td
-                      colSpan={isSimple ? 8 : 12}
+                      colSpan={isSimple ? 9 : 13}
                       className="border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-[.06em]"
                       style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink2)" }}
                     >
@@ -1079,6 +1097,15 @@ function BrandDashboardView({ campaignId, template }) {
                           <span className="text-[10.5px]" style={{ color: "var(--ink3)" }}>{fmtDate(row.liveDate)}</span>
                         )}
                       </div>
+                    </td>
+
+                    {/* Script doc — the brand can change this one, so it
+                        isn't locked down like the address is. */}
+                    <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                      <ScriptLinkCell
+                        value={row.scriptLink}
+                        onChange={(val) => updateLinkField(row.creatorId, "scriptLink", val)}
+                      />
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>

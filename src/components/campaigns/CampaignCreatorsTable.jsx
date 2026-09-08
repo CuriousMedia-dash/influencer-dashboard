@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Lock, Unlock, X, ArrowUpDown, CreditCard, Mail, Pencil, Check, Flag } from "lucide-react";
 import EditableCell from "../ui/EditableCell";
 import MultiLinkEditor from "./MultiLinkEditor";
+import ScriptLinkCell from "./ScriptLinkCell";
 import CopyButton from "../ui/CopyButton";
 import EditPopover from "../ui/EditPopover";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
@@ -50,6 +51,7 @@ const COLS = [
   ["Locked Price", 100],
   ["Locked Status", 96],
   ["Execution Stage", 150],
+  ["Script", 150],
   ["Video Deadline", 130],
   ["Live Video Link", 120],
   ["Payment Info", 175],
@@ -496,6 +498,15 @@ export default function CampaignCreatorsTable({
                         />
                       )}
                     </div>
+                  </td>
+
+                  {/* Working script doc for this influencer on this
+                      campaign. The brand can edit this one too. */}
+                  <td className="border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>
+                    <ScriptLinkCell
+                      value={link.scriptLink}
+                      onChange={(val) => onUpdateLink(link.creatorId, { scriptLink: val })}
+                    />
                   </td>
 
                   <td className="overflow-visible border-b px-3 py-2" style={{ borderColor: "var(--ln)" }}>

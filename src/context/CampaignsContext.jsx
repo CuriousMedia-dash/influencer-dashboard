@@ -44,6 +44,9 @@ function linkFromRow(row) {
     // Delivery address for this creator on this campaign specifically —
     // the same creator can have a different address on another campaign.
     address: row.address ?? "",
+    // Link to the working script doc for this influencer on this
+    // campaign. Editable from both sides.
+    scriptLink: row.script_link ?? "",
     // Set by the brand on their own dashboard, never from this side.
     // Carried through so the row can show as confirmed here too.
     brandLocked: row.brand_locked || false,
@@ -94,6 +97,7 @@ const LINK_FIELD_MAP = {
   fullPaid: "full_paid",
   remark: "remark",
   address: "address",
+  scriptLink: "script_link",
 };
 
 function toLinkColumns(fields) {
@@ -281,7 +285,26 @@ export function CampaignsProvider({ children }) {
     async (campaignId, creatorIds) => {
       const campaign = campaigns.find((c) => c.id === campaignId);
       const existingIds = new Set((campaign?.creatorLinks || []).map((l) => l.creatorId));
-      const newIds = creatorIds.filter((cid) => !existingIds.has(cid));
+
+      // Local state can be stale — someone else may have added the same
+      // people, or a CSV may list the same person twice. Ask the
+      // database who is already linked before inserting anything, and
+      // drop repeats within the incoming list too.
+      const wanted = Array.from(new Set(creatorIds.filter(Boolean)));
+      if (wanted.length === 0) return;
+
+      const { data: alreadyLinked, error: checkError } = await supabase
+        .from("campaign_creator_links")
+        .select("creator_id")
+        .eq("campaign_id", campaignId)
+        .in("creator_id", wanted);
+      if (checkError) {
+        console.error("Couldn't check who's already in this campaign:", checkError.message);
+        return;
+      }
+      (alreadyLinked || []).forEach((r) => existingIds.add(r.creator_id));
+
+      const newIds = wanted.filter((cid) => !existingIds.has(cid));
       if (newIds.length === 0) return;
 
       setCampaigns((prev) =>

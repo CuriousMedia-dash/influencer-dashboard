@@ -48,11 +48,12 @@ export function creatorsToCsv(rows, getTierLabel) {
 // payment status, remarks) that live on the creator↔campaign link rather
 // than the creator record itself.
 const CAMPAIGN_CSV_COLUMNS = [
-  { key: "name", label: "Creator" },
+  { key: "name", label: "Influencer Name" },
   { key: "platform", label: "Platform" },
   { key: "followers", label: "Followers" },
   { key: "phone", label: "Phone" },
   { key: "email", label: "Email" },
+  { key: "address", label: "Address" },
   { key: "commercial", label: "Commercial" },
   { key: "negotiationStatus", label: "Negotiation Status" },
   { key: "lockedCost", label: "Locked Cost" },
@@ -60,6 +61,7 @@ const CAMPAIGN_CSV_COLUMNS = [
    { key: "emailSent", label: "Email Sent" },
   { key: "approvalReceived", label: "Approval Received" },
   { key: "executionStage", label: "Execution Stage" },
+  { key: "scriptLink", label: "Script" },
   { key: "liveLink", label: "Live Link" },
   { key: "liveDate", label: "Live Date" },
   { key: "paymentInfo", label: "Payment Info" },
@@ -116,6 +118,7 @@ const BRAND_DASHBOARD_CSV_COLUMNS = [
   { key: "brandRemark", label: "Remarks" },
   { key: "brandLockedLabel", label: "Locked Status" },
   { key: "executionStage", label: "Execution Stage" },
+  { key: "scriptLink", label: "Script" },
   { key: "liveLink", label: "Live Video Link" },
 ];
 

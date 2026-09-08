@@ -48,6 +48,12 @@ const HEADER_MAP = {
   "delivery address": "address",
   "shipping address": "address",
 
+  // Also campaign-only: the working script doc for this influencer.
+  script: "scriptLink",
+  scripts: "scriptLink",
+  "script link": "scriptLink",
+  "script doc": "scriptLink",
+
   followers: "followers",
   "follower count": "followers",
   "followers count": "followers",
@@ -316,6 +322,7 @@ Found headers: ${headers.join(", ")}`,
       language: get("language") || "Hindi",
       city: get("city"),
       address: get("address"),
+      scriptLink: get("scriptLink"),
       followers,
       avgViews: Math.round(followers * 0.08),
       commercial: get("commercial"),
