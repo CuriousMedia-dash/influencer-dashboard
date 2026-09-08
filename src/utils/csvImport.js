@@ -132,12 +132,35 @@ export function normalisePhone(raw) {
 // Normalise a profile link for matching — strips protocol, "www.", and
 // a trailing slash, so "https://instagram.com/foo/" and
 // "http://www.instagram.com/foo" are recognised as the same link.
+// Share links carry tracking junk that isn't part of the profile —
+// Instagram's "?igsh=...", YouTube's "?si=...", utm tags from a campaign
+// link. Two people pasting the same profile from different places end up
+// with different-looking links, which would otherwise be counted as two
+// separate creators. These are stripped; any other query string is kept,
+// since it may be part of the actual address.
+const TRACKING_PARAMS = ["igsh", "igshid", "si", "fbclid", "gclid", "feature", "ref", "ref_src"];
+
+function stripTrackingParams(link) {
+  const [base, query] = link.split("?");
+  if (!query) return base;
+  const kept = query
+    .split("&")
+    .filter((pair) => {
+      const key = pair.split("=")[0];
+      return key && !TRACKING_PARAMS.includes(key) && !key.startsWith("utm_");
+    })
+    .join("&");
+  return kept ? `${base}?${kept}` : base;
+}
+
 export function normaliseLink(raw) {
-  return String(raw ?? "")
+  const cleaned = String(raw ?? "")
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/#.*$/, "")
     .replace(/\/+$/, "");
+  return stripTrackingParams(cleaned).replace(/\/+$/, "");
 }
 
 // Real-world sheets are full of placeholder text in the link column —
