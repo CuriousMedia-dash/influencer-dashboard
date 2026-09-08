@@ -5,7 +5,7 @@ import TierBadge from "../ui/TierBadge";
 import EditableCell from "../ui/EditableCell";
 import PlatformIcon, { platformLabel } from "../ui/PlatformIcon";
 import CopyButton from "../ui/CopyButton";
-import { fmt, creatorPlatforms, hex2rgba } from "../../utils/format";
+import { fmt, creatorPlatforms, hex2rgba, toHref } from "../../utils/format";
 import {
   LANG_COLORS,
   NICHE_COLORS,
@@ -93,19 +93,28 @@ const Row = memo(function Row({ index, style, data }) {
       >
         <div className="flex min-w-0 items-center gap-1.5 font-medium">
           <span className="h-[7px] w-[7px] flex-shrink-0 rounded-full" style={{ background: lc }} />
-          {platform?.link ? (
+          {/* toHref fixes links saved without https:// — those were being
+              treated as a path inside the app, so the name looked like a
+              link but went nowhere. Styled in the accent colour so it
+              reads as clickable rather than as plain text. */}
+          {toHref(platform?.link) ? (
             <a
-              href={platform.link}
+              href={toHref(platform.link)}
               target="_blank"
               rel="noreferrer"
-              title="View profile"
-              className="block max-w-[95px] overflow-hidden text-ellipsis whitespace-nowrap transition-colors"
-              style={{ color: "var(--ink)" }}
+              title={platform.link}
+              className="block max-w-[95px] overflow-hidden text-ellipsis whitespace-nowrap transition-colors hover:underline"
+              style={{ color: "var(--am)" }}
             >
               {r.name}
             </a>
           ) : (
-            <span className="block max-w-[95px] overflow-hidden text-ellipsis whitespace-nowrap">{r.name}</span>
+            <span
+              title={r.name}
+              className="block max-w-[95px] overflow-hidden text-ellipsis whitespace-nowrap"
+            >
+              {r.name}
+            </span>
           )}
         </div>
       </div>

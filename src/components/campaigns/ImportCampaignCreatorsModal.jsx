@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
 import Modal from "../ui/Modal";
-import { parseCsvImport } from "../../utils/csvImport";
+import { parseCsvImport, dedupeKey } from "../../utils/csvImport";
 import { useCreators } from "../../hooks/useCreators";
 import { useCampaigns } from "../../hooks/useCampaigns";
 import { useToast } from "../../hooks/useToast";
@@ -18,7 +18,7 @@ const STAGES = { IDLE: "idle", ERRORS: "errors", PREVIEW: "preview" };
  */
 export default function ImportCampaignCreatorsModal({ open, onClose, campaignId, campaignName }) {
   const { previewCsvImport, confirmLocalImport, fetchExistingByDedupeKeys } = useCreators();
-  const { addCreatorsToCampaign } = useCampaigns();
+  const { addCreatorsToCampaign, updateCreatorLink } = useCampaigns();
   const showToast = useToast();
   const fileRef = useRef(null);
 
@@ -95,6 +95,21 @@ export default function ImportCampaignCreatorsModal({ open, onClose, campaignId,
       //    skipped, so re-uploading doesn't duplicate a row here either.
       await addCreatorsToCampaign(campaignId, creatorIds);
 
+      // 4. An Address column, if the file had one, belongs to the
+      //    campaign link rather than the influencer — so it's written
+      //    after the links exist. Blank cells are skipped so a partly
+      //    filled column never wipes an address already saved here.
+      const addressByKey = new Map();
+      parsedRows.forEach((row) => {
+        if (row.address) addressByKey.set(dedupeKey(row), row.address);
+      });
+      if (addressByKey.size > 0) {
+        for (const [key, creator] of idMap.entries()) {
+          const address = addressByKey.get(key);
+          if (address) await updateCreatorLink(campaignId, creator.id, { address });
+        }
+      }
+
       const errorNote = errors.length > 0 ? `, ${errors.length} row${errors.length === 1 ? "" : "s"} skipped` : "";
       showToast(`${creatorIds.length} added to this campaign (${preview.added} new to the database)${errorNote}`, true);
       handleClose();
@@ -150,7 +165,8 @@ export default function ImportCampaignCreatorsModal({ open, onClose, campaignId,
           <input ref={fileRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={handleFileChange} />
         </label>
         <p className="text-[11px]" style={{ color: "var(--ink3)" }}>
-          Same columns as the main upload — Influencer Name and a profile link at minimum
+          Influencer Name and a profile link at minimum. An Address column, if you include one, is saved as
+          their delivery address for this campaign.
         </p>
       </div>
 

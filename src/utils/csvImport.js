@@ -42,6 +42,12 @@ const HEADER_MAP = {
   "influencer city": "city",
   location: "city",
 
+  // Only used by the campaign CSV upload, where it becomes the
+  // creator's delivery address for that campaign. Ignored elsewhere.
+  address: "address",
+  "delivery address": "address",
+  "shipping address": "address",
+
   followers: "followers",
   "follower count": "followers",
   "followers count": "followers",
@@ -286,6 +292,7 @@ Found headers: ${headers.join(", ")}`,
       category: get("category") || "Entertainment",
       language: get("language") || "Hindi",
       city: get("city"),
+      address: get("address"),
       followers,
       avgViews: Math.round(followers * 0.08),
       commercial: get("commercial"),

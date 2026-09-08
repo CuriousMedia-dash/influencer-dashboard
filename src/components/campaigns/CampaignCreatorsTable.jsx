@@ -78,7 +78,7 @@ function NameLinkCell({ creator, link, onSaveLink }) {
           target="_blank"
           rel="noreferrer"
           title={link}
-          className="edit-val block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium"
+          className="edit-val block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-medium hover:underline"
           style={{ color: "var(--am)" }}
         >
           {creator.name}
@@ -234,7 +234,7 @@ export default function CampaignCreatorsTable({
       >
         No creators added yet.
         <br />
-        Select creators on the All Creators page and use "Move to Campaign".
+        Select influencers on the All Influencers page and use "Move to Campaign", or use Upload CSV above.
       </div>
     );
   }
