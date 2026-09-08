@@ -655,23 +655,6 @@ function BrandDashboardView({ campaignId, template }) {
       .then(({ error }) => { if (error) console.error("Failed to save brand dashboard change:", error.message); });
   }
 
-  // Client always shows whoever the logged-in brand person actually is —
-  // every time they open this, not just once. Only fires for a genuine
-  // brand login, never for a staff member previewing (they don't have a
-  // "brand name" to fill in with).
-  useEffect(() => {
-    if (!data || !data.campaign) return;
-    if (!data.campaign.isBrandViewer) return;
-    // Filled in from the logged-in brand user the first time only.
-    // Once there's a value — whether auto-filled or typed over — it's
-    // left alone, so an edit here isn't undone on the next load.
-    const name = data.campaign.brandUserName;
-    if (name && !data.campaign.brandClient) {
-      updateMetaField("brandClient", name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.campaign?.isBrandViewer, data?.campaign?.brandUserName]);
-
   function handleDigestSent() {
     setDigestOpen(false);
     setJustSent(true);
@@ -864,9 +847,9 @@ function BrandDashboardView({ campaignId, template }) {
           <SlabCard
             label="Client POC"
             editable
-            value={campaign.brandClient}
+            value={campaign.brandClient || campaign.client}
             onChange={(v) => updateMetaField("brandClient", v)}
-            placeholder={campaign.client || "\u2014"}
+            placeholder={"\u2014"}
           />
           {!isSimple && (
             <SlabCard label={"Budget (\u20b9)"}>{fmt(liveBudget)}</SlabCard>
@@ -1099,13 +1082,10 @@ function BrandDashboardView({ campaignId, template }) {
                       </div>
                     </td>
 
-                    {/* Script doc — the brand can change this one, so it
-                        isn't locked down like the address is. */}
+                    {/* Script doc — the brand opens it, the agency sets
+                        it. View-only here. */}
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
-                      <ScriptLinkCell
-                        value={row.scriptLink}
-                        onChange={(val) => updateLinkField(row.creatorId, "scriptLink", val)}
-                      />
+                      <ScriptLinkCell value={row.scriptLink} onChange={() => {}} readOnly />
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
