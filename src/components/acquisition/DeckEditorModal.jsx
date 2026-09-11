@@ -3,6 +3,7 @@ import { Download, Send, Upload, Trash2, FileText, AlertCircle } from "lucide-re
 import Modal from "../ui/Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { openMailDraft } from "../../utils/email";
 import { useAuth } from "../../hooks/useAuth";
 import {
   fetchDecks,
@@ -10,6 +11,7 @@ import {
   removeDeck,
   downloadDeckBlob,
   deckAsBase64,
+  deckShareUrl,
   formatFileSize,
 } from "../../utils/acquisitionDeckStore";
 
@@ -45,9 +47,12 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
   const [busy, setBusy] = useState("");
   const [subject, setSubject] = useState(`Curious Media × ${majorityCategory}`);
   const [introMessage, setIntroMessage] = useState(DEFAULT_INTRO);
-  const [sendMode, setSendMode] = useState("bcc"); // "bcc" | "individual"
+  const [sendMode, setSendMode] = useState("bcc"); // "bcc" | "individual" | "outlook"
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(null);
+  // Outlook hand-off works one draft at a time; this tracks how far
+  // through the list we are.
+  const [outlookQueue, setOutlookQueue] = useState(null);
 
   const loadDecks = useCallback(async () => {
     setLoadingDecks(true);
@@ -123,9 +128,38 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
     }
   }
 
+  /**
+   * Hands the draft to whatever mail app this machine opens mailto:
+   * links with — Outlook, in your case. The mail is then sent from your
+   * own mailbox, so replies come back to you and a copy lands in your
+   * Sent items. A mailto: draft can't carry an attachment, so the deck
+   * goes in as a download link instead.
+   */
+  function openOutlookDraft(to, deckUrl) {
+    const body = deckUrl ? introMessage + "\n\nDeck: " + deckUrl : introMessage;
+    openMailDraft({ to, subject, body });
+  }
+
   async function handleSend() {
     if (recipientEmails.length === 0) {
       showToast("None of the selected creators have an email on file.", false);
+      return;
+    }
+
+    if (sendMode === "outlook") {
+      setSending(true);
+      try {
+        const deckUrl = deck ? await deckShareUrl(deck) : "";
+        // One draft at a time — opening fifty mail windows at once would
+        // be unusable, so the first opens now and the rest follow as you
+        // work through them.
+        openOutlookDraft(recipientEmails[0], deckUrl);
+        setOutlookQueue({ index: 0, deckUrl });
+      } catch (err) {
+        showToast(`Couldn't prepare the deck link: ${err.message}`, false);
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
@@ -353,6 +387,11 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
                 title: "A separate mail to each",
                 note: `${recipientEmails.length} mails, sent one at a time. Each lands as a direct, personal mail.`,
               },
+              {
+                value: "outlook",
+                title: "Open in my Outlook",
+                note: "Drafts open in your own mail app and you press send, so replies come back to your inbox. The deck goes in as a download link, since a draft can't carry an attachment.",
+              },
             ].map((opt) => {
               const on = sendMode === opt.value;
               return (
@@ -385,6 +424,47 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
           </div>
         </div>
 
+        {outlookQueue && (
+          <div
+            className="rounded-[10px] border p-2.5 text-[12px]"
+            style={{ borderColor: "var(--am)", background: "rgba(30,111,224,.06)", color: "var(--ink2)" }}
+          >
+            <div className="mb-1.5">
+              Draft {outlookQueue.index + 1} of {recipientEmails.length} opened
+              {" \u2014 "}
+              {recipientEmails[outlookQueue.index]}
+            </div>
+            <div className="flex gap-2">
+              {outlookQueue.index < recipientEmails.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = outlookQueue.index + 1;
+                    openOutlookDraft(recipientEmails[next], outlookQueue.deckUrl);
+                    setOutlookQueue({ ...outlookQueue, index: next });
+                  }}
+                  className="rounded-[7px] px-3 py-1.5 text-[12px] font-medium text-white"
+                  style={{ background: "var(--am)" }}
+                >
+                  Open next draft
+                </button>
+              ) : (
+                <span className="text-[12px]" style={{ color: "#2BAE66" }}>
+                  That was the last one.
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setOutlookQueue(null)}
+                className="rounded-[7px] border px-3 py-1.5 text-[12px]"
+                style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
         {progress && (
           <div className="text-[12px]" style={{ color: "var(--ink2)" }}>
             Sending {progress.done + 1} of {progress.total}
@@ -414,6 +494,8 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
               ? "Sending\u2026"
               : sendMode === "bcc"
               ? "Send one mail (BCC)"
+              : sendMode === "outlook"
+              ? "Open first draft in Outlook"
               : `Send ${recipientEmails.length} separate mail${recipientEmails.length === 1 ? "" : "s"}`}
           </button>
         </div>

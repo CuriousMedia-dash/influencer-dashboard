@@ -110,3 +110,17 @@ export async function openPaymentEmail({ to, creator, campaignName, amount, paym
 
   return { clipboardCopied };
 }
+
+/**
+ * Hands a pre-filled draft to whatever mail app handles mailto: on this
+ * machine — Outlook, typically. The mail is then sent from that person's
+ * own mailbox, so replies land in their inbox and a copy appears in
+ * their Sent items.
+ *
+ * Note: a mailto: draft cannot carry a file attachment. Anything that
+ * needs attaching has to travel as a link in the body.
+ */
+export function openMailDraft({ to = "", subject = "", body = "" }) {
+  const params = new URLSearchParams({ subject, body });
+  window.location.href = `mailto:${encodeURIComponent(to)}?${params.toString()}`;
+}

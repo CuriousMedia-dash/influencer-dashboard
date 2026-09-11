@@ -1,0 +1,56 @@
+WHY BRAND MAIL LANDS IN SPAM — AND WHAT FIXES IT
+================================================
+
+Almost all of this is DNS and sender setup, not app code. Nothing in the
+codebase can talk a spam filter round.
+
+CHECK FIRST: what address is it sending from?
+---------------------------------------------
+In Supabase: Edge Functions → send-acquisition-mail → Settings →
+look at RESEND_FROM.
+
+If it looks like onboarding@resend.dev, or any address NOT on
+curiousmedia.in, that alone explains the spam folder. Mail claiming to
+be from your agency but sent from someone else's domain is exactly what
+filters are built to catch.
+
+THE FIX, IN ORDER OF IMPACT
+---------------------------
+1. Verify curiousmedia.in in Resend
+   Resend dashboard → Domains → Add Domain → curiousmedia.in.
+   It gives you three DNS records to add wherever curiousmedia.in is
+   managed:
+     - DKIM   (a TXT record — this is the big one)
+     - SPF    (a TXT record)
+     - Return-Path / MX for bounce handling
+   Wait for all three to show Verified.
+
+2. Send from a real, consistent address on that domain
+   Set RESEND_FROM to something like:
+       Curious Media <hello@curiousmedia.in>
+   Named sender, real mailbox, same every time. Don't rotate it.
+
+3. Add a DMARC record
+   A TXT record at _dmarc.curiousmedia.in:
+       v=DMARC1; p=none; rua=mailto:dmarc@curiousmedia.in
+   Start at p=none. It monitors without blocking anything.
+
+4. Warm it up
+   A brand new domain sending a burst of mail looks like spam. For the
+   first week or two, keep volumes low and steady.
+
+CONTENT THINGS THAT MATTER
+--------------------------
+- A mail that is mostly one link is a classic spam signal. Give it a
+  real sentence or two of context around the link.
+- Avoid link shorteners entirely.
+- Include a plain-text version, not only HTML. The app's mail already
+  sends plain text.
+- Don't put the brand's own domain name in the subject line.
+
+TESTING IT
+----------
+Send one to a test address at https://www.mail-tester.com — it scores
+the mail out of 10 and tells you exactly which check failed. Anything
+above 8 lands in the inbox at most places. Do this after step 1 and
+again after step 3.

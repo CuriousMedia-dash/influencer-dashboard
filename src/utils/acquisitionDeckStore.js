@@ -93,6 +93,20 @@ export async function deckAsBase64(deckRow) {
   });
 }
 
+/**
+ * A shareable download link for the deck, valid for 30 days. Used by the
+ * Outlook hand-off: a mailto: draft can't carry an attachment, so the
+ * deck travels as a link in the body instead.
+ */
+export async function deckShareUrl(deckRow) {
+  const THIRTY_DAYS = 60 * 60 * 24 * 30;
+  const { data, error } = await supabase.storage
+    .from(DECK_BUCKET)
+    .createSignedUrl(deckRow.storage_path, THIRTY_DAYS);
+  if (error) throw new Error(error.message);
+  return data?.signedUrl || "";
+}
+
 export function formatFileSize(bytes) {
   if (!bytes && bytes !== 0) return "";
   if (bytes < 1024) return `${bytes} B`;

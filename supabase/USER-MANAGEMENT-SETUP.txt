@@ -1,0 +1,52 @@
+TEAM ACCESS — what to do before it works
+========================================
+
+1. Deploy the new function. In the Supabase dashboard: Edge Functions →
+   Deploy a new function → name it exactly:
+
+       manage-users
+
+   Then paste in everything from
+   supabase/functions/manage-users/index.ts and deploy.
+
+   (Or from a terminal: supabase functions deploy manage-users)
+
+2. Check the function's secrets. Edge Functions → manage-users →
+   Settings. It needs:
+
+       SUPABASE_URL                 (usually there already)
+       SUPABASE_SERVICE_ROLE_KEY    (usually there already)
+       RESEND_API_KEY               (same one the mail function uses)
+       RESEND_FROM                  (same one the mail function uses)
+
+   The last two are only for sending sign-in details and reset links.
+   Without them the accounts still work, you just pass the password on
+   yourself.
+
+3. Make sure you're in the admins table, or you'll be locked out of the
+   screen you just built:
+
+       select * from admins;
+
+   If your email isn't there:
+
+       insert into admins (email) values ('you@curiousmedia.in');
+
+That's it. The Team button (two-person icon) appears in the top bar for
+admins only.
+
+WHAT IT DOES
+------------
+- Lists everyone with portal access, their level, and when they last
+  signed in
+- Add someone with a temporary password; they can sign in immediately
+  and the details are mailed to them
+- Switch anyone between Member and Admin at any time
+- Mail a password reset link, which points at
+  https://creators.curiousmedia.in
+- Remove access entirely
+
+You can't change or remove your own access from here — that's the one
+mistake that would lock every admin out.
+
+Brand logins are deliberately not listed; they're a separate thing.

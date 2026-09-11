@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sun, Moon, LogOut, UserPlus, ScrollText, Upload } from "lucide-react";
+import { Sun, Moon, LogOut, UserPlus, ScrollText, Upload, Users } from "lucide-react";
 import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../hooks/useAuth";
 import { useCreators } from "../../hooks/useCreators";
@@ -7,6 +7,7 @@ import { timeAgo } from "../../utils/format";
 import InviteBrandModal from "../ui/InviteBrandModal";
 import ModuleSwitcher from "./ModuleSwitcher";
 import ActivityLogModal from "../ui/ActivityLogModal";
+import TeamModal from "../ui/TeamModal";
 
 function statusDotColor(syncStatus) {
   return syncStatus === "synced" ? "#2BAE66" : "var(--ink3)";
@@ -18,6 +19,7 @@ export default function Header({ onGearClick, onAcquisitionUploadClick, activeMo
   const { syncStatus, sheetLink } = useCreators();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activityLogOpen, setActivityLogOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
 
   // The sheet-sync dot, CSV/Sheet upload icon, brand invite, and activity
   // log are all Influencer Marketing features — Creator Acquisition is a
@@ -155,6 +157,27 @@ export default function Header({ onGearClick, onAcquisitionUploadClick, activeMo
             </button>
           )}
 
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setTeamOpen(true)}
+              title="Team access"
+              aria-label="Team access"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border text-[15px] shadow-[0_1px_2px_rgba(16,36,62,.04)] transition-colors"
+              style={{ borderColor: "var(--ln)", background: "var(--panel)", color: "var(--ink2)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--up)";
+                e.currentTarget.style.color = "var(--ink)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--panel)";
+                e.currentTarget.style.color = "var(--ink2)";
+              }}
+            >
+              <Users size={15} />
+            </button>
+          )}
+
           {isInfluencerModule && isAdmin && (
             <button
               type="button"
@@ -209,6 +232,7 @@ export default function Header({ onGearClick, onAcquisitionUploadClick, activeMo
         <>
           <InviteBrandModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
           <ActivityLogModal open={activityLogOpen} onClose={() => setActivityLogOpen(false)} />
+          <TeamModal open={teamOpen} onClose={() => setTeamOpen(false)} />
         </>
       )}
     </header>
