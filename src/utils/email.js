@@ -9,6 +9,10 @@
 
 import { buildPaymentMailto, formatPaymentInfoLines, primaryPlatform } from "./format";
 
+// Where people actually sign in. Included in the mail so nobody has to
+// be told the address separately, or go hunting for an old message.
+const PORTAL_URL = "https://creators.curiousmedia.in/";
+
 function buildCredentialsPlainTextDraft({ to, password }) {
   return [
     `To: ${to}`,
@@ -16,7 +20,9 @@ function buildCredentialsPlainTextDraft({ to, password }) {
     "",
     "Hi,",
     "",
-    "Your account has been created. You can sign in with:",
+    "Your account has been created. You can sign in here:",
+    PORTAL_URL,
+    "",
     `Email: ${to}`,
     `Password: ${password}`,
     "",
@@ -29,13 +35,21 @@ function buildCredentialsMailto({ to, password }) {
   const bodyLines = [
     "Hi,",
     "",
-    "Your account has been created. You can sign in with:",
+    "Your account has been created. You can sign in here:",
+    PORTAL_URL,
+    "",
     `Email: ${to}`,
     `Password: ${password}`,
     "",
     "Please sign in and keep these details safe.",
   ];
-  const toPart = to ? encodeURIComponent(to) : "";
+// The address itself is NOT percent-encoded. Encoding turns "@" into
+// "%40", and when the browser hands the mailto: to a webmail client
+// (Gmail registered as the default handler) that double-encoded address
+// is rejected as malformed — Google answers with a 400 page instead of
+// a compose window. Subject and body still need encoding; the address
+// does not.
+  const toPart = (to || "").trim();
   const query = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
   return `mailto:${toPart}?${query}`;
 }
@@ -109,4 +123,27 @@ export async function openPaymentEmail({ to, creator, campaignName, amount, paym
   window.location.href = mailto;
 
   return { clipboardCopied };
+}
+
+/**
+ * Opens a draft in the machine's own mail app (Outlook), pre-filled.
+ *
+ * Two things matter here, both learned the hard way:
+ *  - the address is NOT percent-encoded. Encoding turns "@" into "%40",
+ *    which a webmail handler rejects as malformed — you get a 400 page
+ *    instead of a compose window.
+ *  - subject and body are encoded with encodeURIComponent, never
+ *    URLSearchParams. URLSearchParams encodes a space as "+", and mail
+ *    apps show that plus sign literally, so the draft arrives full of
+ *    them.
+ *
+ * A mailto: draft cannot carry a file attachment. Anything that needs
+ * attaching has to be attached by hand before sending.
+ */
+export function openOutlookDraft({ to = "", bcc = "", subject = "", body = "" }) {
+  const params = [];
+  if (bcc) params.push(`bcc=${bcc}`);
+  params.push(`subject=${encodeURIComponent(subject)}`);
+  params.push(`body=${encodeURIComponent(body)}`);
+  window.location.href = `mailto:${to}?${params.join("&")}`;
 }

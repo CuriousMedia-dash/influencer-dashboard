@@ -348,7 +348,13 @@ export function buildPaymentMailto({ to, creator, campaignName, amount, paymentI
     "",
     ...formatPaymentInfoLines(paymentInfo),
   ];
-  const toPart = to ? encodeURIComponent(to) : "";
+// The address itself is NOT percent-encoded. Encoding turns "@" into
+// "%40", and when the browser hands the mailto: to a webmail client
+// (Gmail registered as the default handler) that double-encoded address
+// is rejected as malformed — Google answers with a 400 page instead of
+// a compose window. Subject and body still need encoding; the address
+// does not.
+  const toPart = (to || "").trim();
   const query = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
   return `mailto:${toPart}?${query}`;
 }
