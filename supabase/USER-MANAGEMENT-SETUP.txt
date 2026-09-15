@@ -1,52 +1,48 @@
-TEAM ACCESS — what to do before it works
-========================================
+TEAM SCREEN — what changed and what to do
+=========================================
 
-1. Deploy the new function. In the Supabase dashboard: Edge Functions →
-   Deploy a new function → name it exactly:
+The "Create user" button is now "Users". Same button, same place; it
+opens a fuller screen instead of just the create form.
 
-       manage-users
+WHAT'S NEW
+----------
+- Everyone with portal access is listed, with their level and when they
+  last signed in
+- Switch anyone between Member and Admin, any time
+- Mail a password reset link (points at https://creators.curiousmedia.in)
+- Remove someone's access
+- Creating a user works exactly as before — same form, same rules, same
+  create-team-user function. You can now also tick Admin while creating,
+  instead of adding them to the admins table by hand afterwards.
 
-   Then paste in everything from
-   supabase/functions/manage-users/index.ts and deploy.
-
-   (Or from a terminal: supabase functions deploy manage-users)
-
-2. Check the function's secrets. Edge Functions → manage-users →
-   Settings. It needs:
-
-       SUPABASE_URL                 (usually there already)
-       SUPABASE_SERVICE_ROLE_KEY    (usually there already)
-       RESEND_API_KEY               (same one the mail function uses)
-       RESEND_FROM                  (same one the mail function uses)
-
-   The last two are only for sending sign-in details and reset links.
-   Without them the accounts still work, you just pass the password on
-   yourself.
-
-3. Make sure you're in the admins table, or you'll be locked out of the
-   screen you just built:
-
-       select * from admins;
-
-   If your email isn't there:
-
-       insert into admins (email) values ('you@curiousmedia.in');
-
-That's it. The Team button (two-person icon) appears in the top bar for
-admins only.
-
-WHAT IT DOES
-------------
-- Lists everyone with portal access, their level, and when they last
-  signed in
-- Add someone with a temporary password; they can sign in immediately
-  and the details are mailed to them
-- Switch anyone between Member and Admin at any time
-- Mail a password reset link, which points at
-  https://creators.curiousmedia.in
-- Remove access entirely
-
-You can't change or remove your own access from here — that's the one
+You can't change or remove your own access from here. That's the one
 mistake that would lock every admin out.
 
-Brand logins are deliberately not listed; they're a separate thing.
+WHAT YOU NEED TO DO
+-------------------
+Deploy ONE new function. Creating users already had its own function;
+this one covers the parts that didn't exist yet — listing people,
+changing roles, resetting passwords, removing access. All of those need
+the service role key, which can't live in the browser.
+
+In Supabase: Edge Functions -> Deploy a new function -> name it exactly:
+
+    manage-users
+
+Paste in everything from supabase/functions/manage-users/index.ts.
+
+Check its secrets afterwards (Edge Functions -> manage-users ->
+Settings):
+
+    SUPABASE_URL                 (normally already set)
+    SUPABASE_SERVICE_ROLE_KEY    (normally already set)
+    RESEND_API_KEY               (only for reset-link mail)
+    RESEND_FROM                  (only for reset-link mail)
+
+If the Resend ones are missing, everything still works except emailing
+the reset link — it gets copied to your clipboard instead so you can
+send it yourself.
+
+Until this function is deployed, the Users screen will show an error
+where the list should be. Creating a user keeps working regardless,
+since that runs on the function you already had.

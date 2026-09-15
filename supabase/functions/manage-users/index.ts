@@ -10,7 +10,11 @@
 // Called as:
 //   supabase.functions.invoke("manage-users", { body: { action, ... } })
 //
-// Actions: "list" | "create" | "setRole" | "resetPassword" | "setPassword" | "remove"
+// Actions: "list" | "setRole" | "resetPassword" | "setPassword" | "remove"
+//
+// Creating accounts is NOT here — the existing create-team-user function
+// already does that, and enforces the curiousmedia.in address rule.
+// Duplicating it would mean two places to keep in step.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -87,65 +91,6 @@ Deno.serve(async (req) => {
         .sort((a, b) => (a.email || "").localeCompare(b.email || ""));
 
       return json({ users });
-    }
-
-    // ── create ────────────────────────────────────────────────────────
-    if (action === "create") {
-      const email = String(body.email || "").trim().toLowerCase();
-      const password = String(body.password || "");
-      const role = body.role === "admin" ? "admin" : "member";
-
-      if (!email.includes("@")) return json({ error: "That doesn't look like an email address." }, 400);
-      if (password.length < 8) return json({ error: "Password needs to be at least 8 characters." }, 400);
-
-      const { data: created, error } = await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true, // no confirmation mail — they can sign in straight away
-      });
-      if (error) return json({ error: error.message }, 400);
-
-      if (role === "admin") {
-        const { error: adminError } = await admin.from("admins").upsert({ email }, { onConflict: "email" });
-        if (adminError) return json({ error: `User created, but making them an admin failed: ${adminError.message}` }, 400);
-      }
-
-      // Welcome mail is best-effort — the account works whether or not
-      // this sends, so a mail failure never fails the whole request.
-      let emailed = false;
-      if (RESEND_API_KEY && RESEND_FROM) {
-        try {
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${RESEND_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from: RESEND_FROM,
-              to: [email],
-              reply_to: callerEmail,
-              subject: "Your Curious Media portal access",
-              text: [
-                `You've been given access to the Curious Media portal.`,
-                ``,
-                `Sign in here: ${APP_URL}`,
-                `Your email: ${email}`,
-                `Temporary password: ${password}`,
-                ``,
-                `Please change your password after signing in.`,
-                ``,
-                `Added by ${callerEmail}.`,
-              ].join("\n"),
-            }),
-          });
-          emailed = res.ok;
-        } catch (_) {
-          emailed = false;
-        }
-      }
-
-      return json({ ok: true, id: created?.user?.id, emailed });
     }
 
     // ── setRole ───────────────────────────────────────────────────────

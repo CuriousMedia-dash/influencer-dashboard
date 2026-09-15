@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Send, Upload, Trash2, FileText, AlertCircle } from "lucide-react";
 import Modal from "../ui/Modal";
-import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
 import { openMailDraft } from "../../utils/email";
 import { useAuth } from "../../hooks/useAuth";
@@ -10,7 +9,6 @@ import {
   uploadDeck,
   removeDeck,
   downloadDeckBlob,
-  deckAsBase64,
   deckShareUrl,
   formatFileSize,
 } from "../../utils/acquisitionDeckStore";
@@ -22,10 +20,6 @@ const DEFAULT_INTRO =
 // travel inside one request to the send function. Past this, warn rather
 // than let a send fail halfway through a batch.
 const LARGE_DECK_BYTES = 7 * 1024 * 1024;
-
-// Sending one at a time, a short gap keeps well inside the mail
-// provider's rate limit instead of tripping it mid-run.
-const PER_MAIL_GAP_MS = 600;
 
 export default function DeckEditorModal({ open, onClose, recipients, categories, resourceKind = "creators" }) {
   const showToast = useToast();
@@ -47,9 +41,7 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
   const [busy, setBusy] = useState("");
   const [subject, setSubject] = useState(`Curious Media × ${majorityCategory}`);
   const [introMessage, setIntroMessage] = useState(DEFAULT_INTRO);
-  const [sendMode, setSendMode] = useState("bcc"); // "bcc" | "individual" | "outlook"
   const [sending, setSending] = useState(false);
-  const [progress, setProgress] = useState(null);
   // Outlook hand-off works one draft at a time; this tracks how far
   // through the list we are.
   const [outlookQueue, setOutlookQueue] = useState(null);
@@ -146,78 +138,20 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
       return;
     }
 
-    if (sendMode === "outlook") {
-      setSending(true);
-      try {
-        const deckUrl = deck ? await deckShareUrl(deck) : "";
-        // One draft at a time — opening fifty mail windows at once would
-        // be unusable, so the first opens now and the rest follow as you
-        // work through them.
-        openOutlookDraft(recipientEmails[0], deckUrl);
-        setOutlookQueue({ index: 0, deckUrl });
-      } catch (err) {
-        showToast(`Couldn't prepare the deck link: ${err.message}`, false);
-      } finally {
-        setSending(false);
-      }
-      return;
-    }
-
     setSending(true);
-    setProgress(null);
     try {
-      // Read the deck once, not once per recipient.
-      const attachments = deck ? [{ filename: deck.file_name, content: await deckAsBase64(deck) }] : [];
-      const html = introMessage.replace(/\n/g, "<br/>");
-
-      if (sendMode === "bcc") {
-        const { error } = await supabase.functions.invoke("send-acquisition-mail", {
-          body: { bcc: recipientEmails, subject, html, attachments },
-        });
-        if (error) throw error;
-        showToast(
-          `Sent one mail to ${recipientEmails.length} creator${recipientEmails.length === 1 ? "" : "s"} in BCC.`,
-          true
-        );
-        onClose();
-        return;
-      }
-
-      // One mail each. Failures are counted rather than aborting the run,
-      // so one bad address doesn't stop everyone else's mail going out.
-      let sent = 0;
-      const failed = [];
-      for (let i = 0; i < recipientEmails.length; i += 1) {
-        const email = recipientEmails[i];
-        setProgress({ done: i, total: recipientEmails.length });
-        try {
-          const { error } = await supabase.functions.invoke("send-acquisition-mail", {
-            body: { to: [email], subject, html, attachments },
-          });
-          if (error) throw error;
-          sent += 1;
-        } catch (err) {
-          console.error(`Failed to send to ${email}:`, err);
-          failed.push(email);
-        }
-        if (i < recipientEmails.length - 1) {
-          await new Promise((r) => setTimeout(r, PER_MAIL_GAP_MS));
-        }
-      }
-      setProgress(null);
-      showToast(
-        failed.length === 0
-          ? `Sent ${sent} separate mail${sent === 1 ? "" : "s"}.`
-          : `Sent ${sent}, but ${failed.length} failed (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "\u2026" : ""}).`,
-        failed.length === 0
-      );
-      if (failed.length === 0) onClose();
+      // The deck travels as a download link: a mailto: draft can't carry
+      // an attachment. Signed for 30 days.
+      const deckUrl = deck ? await deckShareUrl(deck) : "";
+      // One draft at a time — opening forty mail windows at once would
+      // be unusable, so the first opens now and the rest follow as you
+      // work through them.
+      openOutlookDraft(recipientEmails[0], deckUrl);
+      setOutlookQueue({ index: 0, deckUrl });
     } catch (err) {
-      console.error("Failed to send mail:", err);
-      showToast("Failed to send — check the send-acquisition-mail function logs.", false);
+      showToast(`Couldn't prepare the deck link: ${err.message}`, false);
     } finally {
       setSending(false);
-      setProgress(null);
     }
   }
 
@@ -339,8 +273,8 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
           {deckTooBig && (
             <div className="mt-2 flex items-start gap-1.5 text-[11px]" style={{ color: "#E0A23B" }}>
               <AlertCircle size={12} className="mt-[1px] flex-shrink-0" />
-              This deck is {formatFileSize(deck.file_size)}. Large attachments are often bounced — a smaller PDF is
-              safer.
+              This deck is {formatFileSize(deck.file_size)}. It goes out as a download link rather than an
+              attachment, so size isn{"\u2019"}t a problem — but a smaller PDF still opens faster for the creator.
             </div>
           )}
         </div>
@@ -370,58 +304,12 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
           />
         </div>
 
-        {/* Two ways to send — neither is forced. */}
-        <div>
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[.06em]" style={{ color: "var(--ink3)" }}>
-            How to send
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {[
-              {
-                value: "bcc",
-                title: "One mail, everyone in BCC",
-                note: "Fastest. Nobody sees anyone else's address, but it's one shared mail.",
-              },
-              {
-                value: "individual",
-                title: "A separate mail to each",
-                note: `${recipientEmails.length} mails, sent one at a time. Each lands as a direct, personal mail.`,
-              },
-              {
-                value: "outlook",
-                title: "Open in my Outlook",
-                note: "Drafts open in your own mail app and you press send, so replies come back to your inbox. The deck goes in as a download link, since a draft can't carry an attachment.",
-              },
-            ].map((opt) => {
-              const on = sendMode === opt.value;
-              return (
-                <label
-                  key={opt.value}
-                  className="flex cursor-pointer items-start gap-2 rounded-[9px] border p-2.5"
-                  style={{
-                    borderColor: on ? "var(--am)" : "var(--ln)",
-                    background: on ? "rgba(30,111,224,.06)" : "var(--panel)",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="send-mode"
-                    checked={on}
-                    onChange={() => setSendMode(opt.value)}
-                    className="mt-[3px] h-3.5 w-3.5 cursor-pointer accent-[#1E6FE0]"
-                  />
-                  <span>
-                    <span className="block text-[13px] font-medium" style={{ color: "var(--ink)" }}>
-                      {opt.title}
-                    </span>
-                    <span className="block text-[11px]" style={{ color: "var(--ink3)" }}>
-                      {opt.note}
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+        <div
+          className="rounded-[10px] border p-2.5 text-[11px] leading-relaxed"
+          style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink3)" }}
+        >
+          Drafts open in your own mail app, so these go out from your mailbox and replies come back to your inbox.
+          The deck travels as a download link rather than an attachment, since a draft can{"\u2019"}t carry a file.
         </div>
 
         {outlookQueue && (
@@ -465,13 +353,6 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
           </div>
         )}
 
-        {progress && (
-          <div className="text-[12px]" style={{ color: "var(--ink2)" }}>
-            Sending {progress.done + 1} of {progress.total}
-            {"\u2026"}
-          </div>
-        )}
-
         <div className="mt-1 flex justify-end gap-2">
           <button
             type="button"
@@ -490,13 +371,7 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
             style={{ background: "var(--am)" }}
           >
             <Send size={13} />
-            {sending
-              ? "Sending\u2026"
-              : sendMode === "bcc"
-              ? "Send one mail (BCC)"
-              : sendMode === "outlook"
-              ? "Open first draft in Outlook"
-              : `Send ${recipientEmails.length} separate mail${recipientEmails.length === 1 ? "" : "s"}`}
+            {sending ? "Preparing\u2026" : "Open draft in Outlook"}
           </button>
         </div>
       </div>

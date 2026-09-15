@@ -1,0 +1,55 @@
+WHY THE BRAND MAIL GOES TO SPAM (and Resend being verified doesn't help)
+========================================================================
+
+THE CAUSE
+---------
+The mail the brand gets — their login and password-reset link — is NOT
+sent through Resend. It's sent by Supabase's own built-in email service.
+
+Supabase's default mail service is a shared sender used by every free
+project on the platform. It has no connection to curiousmedia.in, so
+none of your verified DNS applies to it. It's also capped at a handful
+of mails per hour. Filters treat it exactly as you'd expect.
+
+That's why verifying your domain in Resend changed nothing here: your
+acquisition mail goes through Resend, but the brand's login mail never
+touched it.
+
+THE FIX — point Supabase's auth mail at Resend too
+--------------------------------------------------
+About five minutes, no code.
+
+1. In Resend: API Keys → create one (or reuse the existing key). Copy it.
+
+2. In Supabase: Project Settings → Authentication → SMTP Settings →
+   turn on "Enable Custom SMTP", and enter:
+
+       Host:            smtp.resend.com
+       Port:            465
+       Username:        resend
+       Password:        <your Resend API key>
+       Sender email:    hello@curiousmedia.in   (any verified address)
+       Sender name:     Curious Media
+
+   Save.
+
+3. Still in Supabase: Authentication → Rate Limits. The default email
+   limit is very low because of the shared service. Now that you're on
+   your own SMTP you can raise it — 100/hour is a sensible start.
+
+4. Test it: open the brand login page, hit "forgot password" for a test
+   address, and check where it lands. It should now arrive from
+   curiousmedia.in and sit in the inbox.
+
+WHAT THIS ALSO FIXES
+--------------------
+Every automatic mail Supabase sends starts coming from your domain, not
+just the brand's: password resets for your own team, and the reset links
+the new Team screen sends.
+
+ONE MORE THING
+--------------
+The share link itself (the /brand/... URL you copy) isn't emailed by the
+app at all — you paste it into a mail yourself. If THAT mail is the one
+landing in spam, it's your own mailbox's reputation, not the portal, and
+the fix is different. Tell me if so.

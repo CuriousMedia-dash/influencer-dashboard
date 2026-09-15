@@ -7,7 +7,7 @@ import SelectionToolbar from "../components/creators/SelectionToolbar";
 import MoveToCampaignModal from "../components/campaigns/MoveToCampaignModal";
 import CampaignsTabContent from "../components/campaigns/CampaignsTabContent";
 import Modal from "../components/ui/Modal";
-import CreateUserModal from "../components/ui/CreateUserModal";
+import TeamModal from "../components/ui/TeamModal";
 import { useCreators } from "../hooks/useCreators";
 import { useCampaigns } from "../hooks/useCampaigns";
 import { useCreatorFilters } from "../hooks/useCreatorFilters";
@@ -151,12 +151,12 @@ export default function CreatorsWorkspace({ activeTab, onTabChange }) {
             }}
           >
             <UserPlus size={15} />
-            Create user
+            Users
           </button>
         )}
       </div>
 
-      <CreateUserModal open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
+      <TeamModal open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
 
       {activeTab === "creators" ? (
         <>

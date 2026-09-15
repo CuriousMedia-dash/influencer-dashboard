@@ -3,6 +3,10 @@ import { Shield, User, KeyRound, Trash2, Plus, RefreshCw } from "lucide-react";
 import Modal from "./Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { useAuth } from "../../hooks/useAuth";
+import { logActivity } from "../../utils/activityLog";
+import { getFunctionErrorMessage } from "../../utils/functionError";
+import { openCredentialsEmail } from "../../utils/email";
 
 /**
  * Who can get into the portal, and at what level. Everything here runs
@@ -13,6 +17,7 @@ import { useToast } from "../../hooks/useToast";
  */
 export default function TeamModal({ open, onClose }) {
   const showToast = useToast();
+  const { user } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,23 +29,13 @@ export default function TeamModal({ open, onClose }) {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState("member");
   const [saving, setSaving] = useState(false);
+  // Held after a successful create so the credentials can be mailed —
+  // the password is never retrievable again afterwards.
+  const [created, setCreated] = useState(null);
 
-  const call = useCallback(async (body) => {
-    const { data, error: fnError } = await supabase.functions.invoke("manage-users", { body });
-    if (fnError) {
-      // The function returns its reason in the body, which supabase-js
-      // hides behind a generic message — dig it out so the person sees
-      // what actually went wrong.
-      let detail = fnError.message;
-      try {
-        const parsed = await fnError.context?.json?.();
-        if (parsed?.error) detail = parsed.error;
-      } catch {
-        // Keep the generic message.
-      }
-      throw new Error(detail);
-    }
-    if (data?.error) throw new Error(data.error);
+  const call = useCallback(async (name, body) => {
+    const { data, error: fnError } = await supabase.functions.invoke(name, { body });
+    if (fnError || data?.error) throw new Error(await getFunctionErrorMessage(fnError, data));
     return data;
   }, []);
 
@@ -48,7 +43,7 @@ export default function TeamModal({ open, onClose }) {
     setLoading(true);
     setError("");
     try {
-      const data = await call({ action: "list" });
+      const data = await call("manage-users", { action: "list" });
       setUsers(data.users || []);
     } catch (err) {
       setError(err.message);
@@ -66,7 +61,7 @@ export default function TeamModal({ open, onClose }) {
   async function changeRole(user, role) {
     setBusyEmail(user.email);
     try {
-      await call({ action: "setRole", email: user.email, role });
+      await call("manage-users", { action: "setRole", email: user.email, role });
       setUsers((prev) => prev.map((u) => (u.email === user.email ? { ...u, role } : u)));
       showToast(`${user.email} is now ${role === "admin" ? "an admin" : "a member"}.`, true);
     } catch (err) {
@@ -79,7 +74,7 @@ export default function TeamModal({ open, onClose }) {
   async function sendReset(user) {
     setBusyEmail(user.email);
     try {
-      const data = await call({ action: "resetPassword", email: user.email });
+      const data = await call("manage-users", { action: "resetPassword", email: user.email });
       if (data.emailed) {
         showToast(`Reset link sent to ${user.email}.`, true);
       } else if (data.link) {
@@ -97,7 +92,7 @@ export default function TeamModal({ open, onClose }) {
     if (!window.confirm(`Remove ${user.email}? They lose access immediately.`)) return;
     setBusyEmail(user.email);
     try {
-      await call({ action: "remove", email: user.email, userId: user.id });
+      await call("manage-users", { action: "remove", email: user.email, userId: user.id });
       setUsers((prev) => prev.filter((u) => u.email !== user.email));
       showToast(`${user.email} removed.`, true);
     } catch (err) {
@@ -110,22 +105,20 @@ export default function TeamModal({ open, onClose }) {
   async function addUser() {
     setSaving(true);
     try {
-      const data = await call({
-        action: "create",
-        email: newEmail.trim(),
-        password: newPassword,
-        role: newRole,
-      });
-      showToast(
-        data.emailed
-          ? `${newEmail.trim()} added — their sign-in details have been mailed to them.`
-          : `${newEmail.trim()} added. Mail didn't send, so pass the password on yourself.`,
-        data.emailed
-      );
+      const email = newEmail.trim();
+      // Same function the Create User button has always used, so the
+      // rules it enforces (curiousmedia.in addresses) still apply and
+      // there's only one place that creates accounts.
+      await call("create-team-user", { email, password: newPassword });
+      if (newRole === "admin") {
+        await call("manage-users", { action: "setRole", email, role: "admin" });
+      }
+      logActivity(user, "team_user_created", { email });
+      showToast(`${email} can sign in now. Send them the password.`, true);
+      setCreated({ email, password: newPassword });
       setNewEmail("");
       setNewPassword("");
       setNewRole("member");
-      setAdding(false);
       load();
     } catch (err) {
       showToast(err.message, false);
@@ -209,8 +202,27 @@ export default function TeamModal({ open, onClose }) {
                 </button>
               </div>
               <div className="text-[11px]" style={{ color: "var(--ink3)" }}>
-                They can sign in straight away with this password, and their details are mailed to them.
+                They can sign in straight away with this password. Must be a curiousmedia.in address.
               </div>
+
+              {created && (
+                <div
+                  className="rounded-[8px] border p-2.5 text-[11px]"
+                  style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}
+                >
+                  <div className="mb-2">{created.email} created.</div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await openCredentialsEmail({ to: created.email, password: created.password });
+                    }}
+                    className="rounded-[6px] border px-2.5 py-1.5 text-[11px] font-semibold"
+                    style={{ borderColor: "rgba(43,174,102,.3)", background: "var(--panel)", color: "#2BAE66" }}
+                  >
+                    Open mail draft with their login details
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
