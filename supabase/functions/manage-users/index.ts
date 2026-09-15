@@ -1,24 +1,25 @@
-// Team management for the portal: list who has access, add someone, make
-// them an admin or drop them back to member, reset a password, remove
-// them entirely.
+// Team management for the portal: list who has access, change whether
+// someone is an admin, set a password, remove access.
 //
-// This has to live server-side. Creating users and changing passwords
-// needs the service role key, which must never be shipped to a browser.
-// Every call is checked against the admins table first, so only an admin
-// can use it regardless of what the frontend allows.
+// This has to live server-side. Changing passwords and reading the user
+// list needs the service role key, which must never be shipped to a
+// browser. Every call is checked against the admins table first, so only
+// an admin can use it regardless of what the frontend allows.
 //
 // Called as:
 //   supabase.functions.invoke("manage-users", { body: { action, ... } })
 //
-// Actions: "list" | "setRole" | "resetPassword" | "setPassword" | "remove"
+// Actions: "list" | "setRole" | "setPassword" | "remove"
 //
 // Creating accounts is NOT here — the existing create-team-user function
 // already does that, and enforces the curiousmedia.in address rule.
 // Duplicating it would mean two places to keep in step.
+//
+// There is deliberately no "send a reset link" action. For team members
+// an admin sets the new password directly and passes it on. Reset links
+// are a brand-side thing, handled by Forgot password on the brand login.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const APP_URL = "https://creators.curiousmedia.in";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,8 +39,6 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const RESEND_FROM = Deno.env.get("RESEND_FROM");
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -85,7 +84,6 @@ Deno.serve(async (req) => {
           role: adminEmails.has(u.email!) ? "admin" : "member",
           createdAt: u.created_at,
           lastSignInAt: u.last_sign_in_at,
-          confirmed: Boolean(u.email_confirmed_at),
           isSelf: u.email === callerEmail,
         }))
         .sort((a, b) => (a.email || "").localeCompare(b.email || ""));
@@ -114,54 +112,11 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    // ── resetPassword: mails them a link to set a new one ─────────────
-    if (action === "resetPassword") {
-      const email = String(body.email || "").trim().toLowerCase();
-
-      const { data: linkData, error } = await admin.auth.admin.generateLink({
-        type: "recovery",
-        email,
-        // Straight to the app root, not a dedicated path — the app
-        // spots the recovery session on load and shows the set-password
-        // screen itself, so no extra route needs to exist.
-        options: { redirectTo: APP_URL },
-      });
-      if (error) return json({ error: error.message }, 400);
-
-      const link = linkData?.properties?.action_link;
-      if (!link) return json({ error: "Couldn't generate a reset link." }, 400);
-
-      if (!RESEND_API_KEY || !RESEND_FROM) {
-        // No mail configured — hand the link back so it can be passed on
-        // directly rather than failing outright.
-        return json({ ok: true, emailed: false, link });
-      }
-
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: RESEND_FROM,
-          to: [email],
-          reply_to: callerEmail,
-          subject: "Reset your Curious Media portal password",
-          text: [
-            `A password reset was requested for your Curious Media portal account.`,
-            ``,
-            `Set a new password here: ${link}`,
-            ``,
-            `If you weren't expecting this, you can ignore it and your password stays as it is.`,
-          ].join("\n"),
-        }),
-      });
-
-      return json({ ok: true, emailed: res.ok, link: res.ok ? undefined : link });
-    }
-
-    // ── setPassword: admin sets one directly ──────────────────────────
+    // ── setPassword ───────────────────────────────────────────────────
     if (action === "setPassword") {
       const userId = String(body.userId || "");
       const password = String(body.password || "");
+      if (!userId) return json({ error: "Missing user." }, 400);
       if (password.length < 8) return json({ error: "Password needs to be at least 8 characters." }, 400);
 
       const { error } = await admin.auth.admin.updateUserById(userId, { password });

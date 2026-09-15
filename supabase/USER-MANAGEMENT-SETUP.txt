@@ -1,48 +1,45 @@
-TEAM SCREEN — what changed and what to do
-=========================================
+TEAM SCREEN — setup
+===================
 
-The "Create user" button is now "Users". Same button, same place; it
-opens a fuller screen instead of just the create form.
+The "Create user" button is now "Users". Same button, same place.
 
-WHAT'S NEW
-----------
-- Everyone with portal access is listed, with their level and when they
-  last signed in
+WHAT IT DOES
+------------
+- Lists everyone with portal access, their level, and when they last
+  signed in
+- Add someone (same form and rules as before), and tick Admin while
+  creating if you want
 - Switch anyone between Member and Admin, any time
-- Mail a password reset link (points at https://creators.curiousmedia.in)
+- Set someone's password directly — type one or hit Generate, save, then
+  optionally open a mail draft with the new password in it
 - Remove someone's access
-- Creating a user works exactly as before — same form, same rules, same
-  create-team-user function. You can now also tick Admin while creating,
-  instead of adding them to the admins table by hand afterwards.
 
-You can't change or remove your own access from here. That's the one
-mistake that would lock every admin out.
+You can't change or remove your own access from here.
 
-WHAT YOU NEED TO DO
--------------------
-Deploy ONE new function. Creating users already had its own function;
-this one covers the parts that didn't exist yet — listing people,
-changing roles, resetting passwords, removing access. All of those need
-the service role key, which can't live in the browser.
+There is no "send them a reset link" for team members. You set the
+password and tell them. Reset links stay a brand-side thing — the brand
+login's "Forgot password" already mails one automatically.
 
-In Supabase: Edge Functions -> Deploy a new function -> name it exactly:
+WHAT TO DEPLOY
+--------------
+One function. In Supabase: Edge Functions -> Deploy a new function ->
+name it exactly:
 
     manage-users
 
 Paste in everything from supabase/functions/manage-users/index.ts.
 
-Check its secrets afterwards (Edge Functions -> manage-users ->
-Settings):
+Its secrets (Edge Functions -> manage-users -> Settings) only need:
 
     SUPABASE_URL                 (normally already set)
     SUPABASE_SERVICE_ROLE_KEY    (normally already set)
-    RESEND_API_KEY               (only for reset-link mail)
-    RESEND_FROM                  (only for reset-link mail)
 
-If the Resend ones are missing, everything still works except emailing
-the reset link — it gets copied to your clipboard instead so you can
-send it yourself.
+Resend keys are NOT needed here anymore — nothing on this screen sends
+mail by itself. That's what the "Mail didn't send" message was about.
 
-Until this function is deployed, the Users screen will show an error
-where the list should be. Creating a user keeps working regardless,
-since that runs on the function you already had.
+ALSO REDEPLOY
+-------------
+    send-acquisition-mail
+
+It now accepts a reply-to address, so replies from creators land in the
+inbox of whoever pressed send.

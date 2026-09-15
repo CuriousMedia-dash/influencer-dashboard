@@ -15,6 +15,19 @@ import { openCredentialsEmail } from "../../utils/email";
  * leave the server. That function re-checks admin rights on every call,
  * so this screen being hidden isn't the only thing protecting it.
  */
+// Deliberately avoids characters that get misread when someone types
+// this in by hand — no l/1/I, no O/0.
+function generatePassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  const values = new Uint32Array(12);
+  crypto.getRandomValues(values);
+  values.forEach((v) => {
+    out += chars[v % chars.length];
+  });
+  return out;
+}
+
 export default function TeamModal({ open, onClose }) {
   const showToast = useToast();
   const { user } = useAuth();
@@ -32,6 +45,11 @@ export default function TeamModal({ open, onClose }) {
   // Held after a successful create so the credentials can be mailed —
   // the password is never retrievable again afterwards.
   const [created, setCreated] = useState(null);
+  // Which row has its password form open, what's typed in it, and the
+  // last one saved (kept only so it can be mailed).
+  const [resetFor, setResetFor] = useState(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetDone, setResetDone] = useState(null);
 
   const call = useCallback(async (name, body) => {
     const { data, error: fnError } = await supabase.functions.invoke(name, { body });
@@ -71,16 +89,25 @@ export default function TeamModal({ open, onClose }) {
     }
   }
 
-  async function sendReset(user) {
+  /**
+   * Sets a team member's password outright rather than mailing them a
+   * link to do it themselves. Reset links are a brand-side thing — for
+   * staff it's faster to set one and tell them.
+   */
+  async function savePassword(user) {
+    if (resetPassword.length < 8) {
+      showToast("Password needs to be at least 8 characters.", false);
+      return;
+    }
     setBusyEmail(user.email);
     try {
-      const data = await call("manage-users", { action: "resetPassword", email: user.email });
-      if (data.emailed) {
-        showToast(`Reset link sent to ${user.email}.`, true);
-      } else if (data.link) {
-        await navigator.clipboard?.writeText(data.link).catch(() => {});
-        showToast("Mail didn't send — reset link copied to your clipboard instead.", false);
-      }
+      await call("manage-users", { action: "setPassword", userId: user.id, password: resetPassword });
+      // Held so it can be mailed — once this closes it's gone for good,
+      // since a saved password can never be read back out.
+      setResetDone({ email: user.email, password: resetPassword });
+      setResetFor(null);
+      setResetPassword("");
+      showToast(`Password changed for ${user.email}.`, true);
     } catch (err) {
       showToast(err.message, false);
     } finally {
@@ -286,11 +313,18 @@ export default function TeamModal({ open, onClose }) {
 
                 <button
                   type="button"
-                  onClick={() => sendReset(u)}
+                  onClick={() => {
+                    setResetDone(null);
+                    setResetPassword("");
+                    setResetFor(resetFor === u.email ? null : u.email);
+                  }}
                   disabled={busy}
-                  title="Mail them a password reset link"
+                  title="Set a new password for them"
                   className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] border disabled:opacity-50"
-                  style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                  style={{
+                    borderColor: resetFor === u.email ? "var(--am)" : "var(--ln)",
+                    color: resetFor === u.email ? "var(--am)" : "var(--ink2)",
+                  }}
                 >
                   <KeyRound size={12} />
                 </button>
@@ -306,6 +340,76 @@ export default function TeamModal({ open, onClose }) {
                   >
                     <Trash2 size={12} />
                   </button>
+                )}
+
+                {resetFor === u.email && (
+                  <div className="mt-1 flex w-full flex-wrap items-center gap-2 border-t pt-2" style={{ borderColor: "var(--ln)" }}>
+                    <input
+                      type="text"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      placeholder="New password (at least 8 characters)"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") savePassword(u);
+                        if (e.key === "Escape") setResetFor(null);
+                      }}
+                      className="min-w-[180px] flex-1 rounded-[7px] border px-2 py-1 text-[12px] outline-none"
+                      style={{ borderColor: "var(--ln)", background: "var(--up)", color: "var(--ink)" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setResetPassword(generatePassword())}
+                      className="rounded-[7px] border px-2.5 py-1 text-[12px]"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                    >
+                      Generate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => savePassword(u)}
+                      disabled={busy || resetPassword.length < 8}
+                      className="rounded-[7px] px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-50"
+                      style={{ background: "var(--am)" }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResetFor(null)}
+                      className="rounded-[7px] border px-2.5 py-1 text-[12px]"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink2)" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {resetDone?.email === u.email && (
+                  <div
+                    className="mt-1 flex w-full flex-wrap items-center gap-2 rounded-[8px] border p-2 text-[11px]"
+                    style={{ borderColor: "rgba(43,174,102,.3)", background: "rgba(43,174,102,.06)", color: "#2BAE66" }}
+                  >
+                    <span className="flex-1">
+                      New password: <b style={{ fontFamily: "'JetBrains Mono', monospace" }}>{resetDone.password}</b>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openCredentialsEmail({ to: resetDone.email, password: resetDone.password })}
+                      className="rounded-[6px] border px-2.5 py-1 text-[11px] font-semibold"
+                      style={{ borderColor: "rgba(43,174,102,.3)", background: "var(--panel)", color: "#2BAE66" }}
+                    >
+                      Mail it to them
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setResetDone(null)}
+                      className="rounded-[6px] border px-2 py-1 text-[11px]"
+                      style={{ borderColor: "var(--ln)", color: "var(--ink3)" }}
+                    >
+                      Done
+                    </button>
+                  </div>
                 )}
               </div>
             );
