@@ -628,8 +628,43 @@ function BrandDashboardView({ campaignId, template }) {
     }
   }, [theme]);
 
-  function updateLinkField(creatorId, field, value) {
+  /**
+   * Locking has its own function on the database side. The general
+   * dashboard function refuses the field, and a direct write is stopped
+   * by row-level security — and a blocked write reports success while
+   * changing nothing, which is why a lock used to vanish on refresh.
+   * brand_lock_creator runs with the table owner's rights and does this
+   * one job only.
+   */
+  async function lockCreator(creatorId) {
     const previousRow = data.rows.find((r) => r.creatorId === creatorId);
+    const errorKey = `${creatorId}:brandLocked`;
+
+    setData((prev) => ({
+      ...prev,
+      rows: prev.rows.map((r) => (r.creatorId === creatorId ? { ...r, brandLocked: true } : r)),
+    }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[errorKey];
+      return next;
+    });
+
+    const { error } = await supabaseBrand.rpc("brand_lock_creator", {
+      p_campaign_id: campaignId,
+      p_creator_id: creatorId,
+    });
+
+    if (!error) return;
+
+    console.error("Failed to lock creator:", error.message);
+    // Fall back to the old path, in case this database hasn't had
+    // brand_lock_creator added yet.
+    updateLinkField(creatorId, "brandLocked", true, previousRow);
+  }
+
+  function updateLinkField(creatorId, field, value, revertTo) {
+    const previousRow = revertTo || data.rows.find((r) => r.creatorId === creatorId);
     const errorKey = `${creatorId}:${field}`;
     setData((prev) => ({
       ...prev,
@@ -654,13 +689,29 @@ function BrandDashboardView({ campaignId, template }) {
           // shown — so it looked like the lock undid itself. Write it
           // straight to the table instead. If that's also refused, the
           // revert below still runs and now says why.
-          const { error: directError } = await supabaseBrand
+          const directPatch = { [LINK_COLUMN_FOR_FIELD[field] || field]: value };
+          // Locking also stamps when it happened, which the dashboard
+          // function would normally have done.
+          if (field === "brandLocked" && value) directPatch.brand_locked_at = new Date().toISOString();
+
+          // .select() matters here: an update blocked by row-level
+          // security matches zero rows and reports NO error at all. Without
+          // checking what came back, a write that saved nothing looks like
+          // a success — the value stays on screen, nothing reaches the
+          // database, and nobody else ever sees it.
+          const { data: written, error: directError } = await supabaseBrand
             .from("campaign_creator_links")
-            .update({ [LINK_COLUMN_FOR_FIELD[field] || field]: value })
+            .update(directPatch)
             .eq("campaign_id", campaignId)
-            .eq("creator_id", creatorId);
-          if (!directError) return; // saved after all — keep what's on screen
-          console.error(`Direct save also failed (${field}):`, directError.message);
+            .eq("creator_id", creatorId)
+            .select("creator_id");
+
+          if (!directError && written && written.length > 0) return; // genuinely saved
+
+          const reason = directError
+            ? directError.message
+            : "Saved nothing — this login isn't allowed to change that row.";
+          console.error(`Direct save also failed (${field}):`, reason);
           // The server refused this (e.g. Final Cost below Last Cost,
           // already locked) — undo the optimistic change and show the
           // reason right under the field itself. Stays visible until
@@ -670,7 +721,7 @@ function BrandDashboardView({ campaignId, template }) {
             ...prev,
             rows: prev.rows.map((r) => (r.creatorId === creatorId ? previousRow : r)),
           }));
-          setFieldErrors((prev) => ({ ...prev, [errorKey]: error.message || "Couldn't save that change." }));
+          setFieldErrors((prev) => ({ ...prev, [errorKey]: reason || error.message || "Couldn't save that change." }));
         }
       });
   }
@@ -690,7 +741,7 @@ function BrandDashboardView({ campaignId, template }) {
 
   function handleConfirmLock() {
     if (!confirmLockRow) return;
-    updateLinkField(confirmLockRow.creatorId, "brandLocked", true);
+    lockCreator(confirmLockRow.creatorId);
     logActivity(user, "creator_locked", { creatorName: confirmLockRow.name, campaignName: campaign.name }, supabaseBrand);
     setConfirmLockRow(null);
   }

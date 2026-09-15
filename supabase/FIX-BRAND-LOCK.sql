@@ -1,60 +1,71 @@
 -- ─────────────────────────────────────────────────────────────────────
--- Brand lock that unlocks itself
+-- FIX: brand lock doesn't survive a refresh
 --
--- What was happening: clicking Lock ticks the row on screen, then calls
--- the update_brand_dashboard_link function. That function refuses the
--- brand_locked field, so the app put the row back the way it was — with
--- no message anywhere. The result looked like the lock undoing itself a
--- second later.
+-- Run this whole file in the Supabase SQL editor. It's safe to re-run.
 --
--- The app now (a) shows the refusal on the row instead of silently
--- reverting, and (b) falls back to writing the column directly. That
--- fallback only works if brand users are allowed to update the table,
--- which step 1 below grants.
+-- What was wrong: the brand's Lock click had two ways to save and both
+-- were blocked. The dashboard function refuses that field, and a direct
+-- write is stopped by row-level security. A blocked write reports no
+-- error in Postgres — it just changes nothing — so the screen kept the
+-- lock and the database never had it. Refresh, and it's gone.
 --
--- Step 2 is the proper fix. Do that if you can.
+-- This adds one small function that does only this one job and runs with
+-- the table owner's rights, so row-level security doesn't block it. The
+-- app calls this first now.
 -- ─────────────────────────────────────────────────────────────────────
 
--- 1. Let the brand set the lock directly.
---    Check what's already there first:
---
---      select policyname, cmd, qual
---        from pg_policies
---       where tablename = 'campaign_creator_links';
---
---    If nothing lets a brand user update their own campaign's rows, add
---    something along these lines — adjust the brand_users join to match
---    how your project links a brand login to a campaign:
---
--- create policy "brand_can_update_own_campaign_links"
---   on campaign_creator_links for update
---   to authenticated
---   using (
---     campaign_id in (
---       select c.id from campaigns c
---       join brand_users b on b.email = auth.jwt() ->> 'email'
---       where c.id = campaign_creator_links.campaign_id
---     )
---   );
+create or replace function brand_lock_creator(
+  p_campaign_id uuid,
+  p_creator_id  uuid
+)
+returns boolean
+language plpgsql
+security definer          -- runs as the owner, so RLS doesn't block it
+set search_path = public
+as $$
+declare
+  v_email text;
+  v_rows  int;
+begin
+  -- Who's calling. No session, no lock.
+  select auth.jwt() ->> 'email' into v_email;
+  if v_email is null then
+    raise exception 'Not signed in.';
+  end if;
+
+  -- Only a brand login may lock. Staff confirm on their own side.
+  if not exists (select 1 from brand_users where email = v_email) then
+    raise exception 'Only a brand login can lock a creator.';
+  end if;
+
+  update campaign_creator_links
+     set brand_locked    = true,
+         brand_locked_at = now()
+   where campaign_id = p_campaign_id
+     and creator_id  = p_creator_id;
+
+  get diagnostics v_rows = row_count;
+
+  -- Nothing matched means a wrong campaign or creator id, which the
+  -- caller should hear about rather than assume worked.
+  if v_rows = 0 then
+    raise exception 'No such creator on this campaign.';
+  end if;
+
+  return true;
+end;
+$$;
+
+grant execute on function brand_lock_creator(uuid, uuid) to authenticated;
 
 
--- 2. THE PROPER FIX — teach the dashboard function about the field.
---    It lives in the database, not the repo, so I can't edit it blind.
---    Run this and send me what it prints:
---
---      select pg_get_functiondef(oid)
---        from pg_proc
---       where proname = 'update_brand_dashboard_link';
---
---    It'll have a list of allowed field names inside it. brand_locked
---    needs to be in that list, and it needs to write a boolean rather
---    than text — the app sends the value as the string 'true', which is
---    very likely what it's choking on.
-
-
--- 3. While you're there, confirm the column exists and its type:
---
---      select column_name, data_type
---        from information_schema.columns
---       where table_name = 'campaign_creator_links'
---         and column_name like 'brand%';
+-- ─────────────────────────────────────────────────────────────────────
+-- CHECK IT WORKED
+-- Lock someone on the brand dashboard, then run this. brand_locked
+-- should be true and brand_locked_at should be a moment ago.
+-- ─────────────────────────────────────────────────────────────────────
+-- select c.name, cl.brand_locked, cl.brand_locked_at
+--   from campaign_creator_links cl
+--   join creators c on c.id = cl.creator_id
+--  where cl.campaign_id = '<campaign id from the dashboard URL>'
+--  order by c.name;
