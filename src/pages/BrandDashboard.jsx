@@ -12,6 +12,20 @@ import { logActivity } from "../utils/activityLog";
 
 // Plain, simple styling — matches the green already used everywhere else
 // in the app for confirmed/paid/locked states, no special new treatment.
+// Maps the dashboard's field names onto the actual table columns, for
+// the direct-write fallback when the dashboard function won't take a
+// field.
+const LINK_COLUMN_FOR_FIELD = {
+  brandLocked: "brand_locked",
+  brandLockedCost: "brand_locked_cost",
+  brandProposalCost: "brand_proposal_cost",
+  brandCounterCost: "brand_counter_cost",
+  brandLastCost: "brand_last_cost",
+  brandFinalCost: "brand_final_cost",
+  brandRemark: "brand_remark",
+  brandReimbursement: "brand_reimbursement",
+};
+
 const LOCK_COLOR = "#2BAE66";
 const LOCK_WASH = "rgba(43,174,102,.08)";
 const LOCK_BORDER = "rgba(43,174,102,.3)";
@@ -631,9 +645,22 @@ function BrandDashboardView({ campaignId, template }) {
     });
     supabaseBrand
       .rpc("update_brand_dashboard_link", { p_campaign_id: campaignId, p_creator_id: creatorId, p_field: field, p_value: String(value) })
-      .then(({ error }) => {
+      .then(async ({ error }) => {
         if (error) {
-          console.error("Failed to save brand dashboard change:", error.message);
+          console.error(`Failed to save brand dashboard change (${field}):`, error.message);
+
+          // Locking was silently bouncing back: the dashboard function
+          // doesn't accept this field, the row reverted, and nothing was
+          // shown — so it looked like the lock undid itself. Write it
+          // straight to the table instead. If that's also refused, the
+          // revert below still runs and now says why.
+          const { error: directError } = await supabaseBrand
+            .from("campaign_creator_links")
+            .update({ [LINK_COLUMN_FOR_FIELD[field] || field]: value })
+            .eq("campaign_id", campaignId)
+            .eq("creator_id", creatorId);
+          if (!directError) return; // saved after all — keep what's on screen
+          console.error(`Direct save also failed (${field}):`, directError.message);
           // The server refused this (e.g. Final Cost below Last Cost,
           // already locked) — undo the optimistic change and show the
           // reason right under the field itself. Stays visible until
@@ -1026,6 +1053,14 @@ function BrandDashboardView({ campaignId, template }) {
                     </td>
 
                     <td className="border-b px-4 py-3" style={{ borderColor: "var(--ln)" }}>
+                      {/* If a lock is refused, say so here. It used to
+                          revert with no message, which read as the lock
+                          undoing itself. */}
+                      {fieldErrors[`${row.creatorId}:brandLocked`] && (
+                        <div className="mb-1 text-[10.5px] leading-snug" style={{ color: "#E0524B" }}>
+                          {fieldErrors[`${row.creatorId}:brandLocked`]}
+                        </div>
+                      )}
                       {row.brandLocked ? (
                         <span
                           title="Locked permanently — cannot be undone"

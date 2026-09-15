@@ -1,0 +1,60 @@
+-- ─────────────────────────────────────────────────────────────────────
+-- Brand lock that unlocks itself
+--
+-- What was happening: clicking Lock ticks the row on screen, then calls
+-- the update_brand_dashboard_link function. That function refuses the
+-- brand_locked field, so the app put the row back the way it was — with
+-- no message anywhere. The result looked like the lock undoing itself a
+-- second later.
+--
+-- The app now (a) shows the refusal on the row instead of silently
+-- reverting, and (b) falls back to writing the column directly. That
+-- fallback only works if brand users are allowed to update the table,
+-- which step 1 below grants.
+--
+-- Step 2 is the proper fix. Do that if you can.
+-- ─────────────────────────────────────────────────────────────────────
+
+-- 1. Let the brand set the lock directly.
+--    Check what's already there first:
+--
+--      select policyname, cmd, qual
+--        from pg_policies
+--       where tablename = 'campaign_creator_links';
+--
+--    If nothing lets a brand user update their own campaign's rows, add
+--    something along these lines — adjust the brand_users join to match
+--    how your project links a brand login to a campaign:
+--
+-- create policy "brand_can_update_own_campaign_links"
+--   on campaign_creator_links for update
+--   to authenticated
+--   using (
+--     campaign_id in (
+--       select c.id from campaigns c
+--       join brand_users b on b.email = auth.jwt() ->> 'email'
+--       where c.id = campaign_creator_links.campaign_id
+--     )
+--   );
+
+
+-- 2. THE PROPER FIX — teach the dashboard function about the field.
+--    It lives in the database, not the repo, so I can't edit it blind.
+--    Run this and send me what it prints:
+--
+--      select pg_get_functiondef(oid)
+--        from pg_proc
+--       where proname = 'update_brand_dashboard_link';
+--
+--    It'll have a list of allowed field names inside it. brand_locked
+--    needs to be in that list, and it needs to write a boolean rather
+--    than text — the app sends the value as the string 'true', which is
+--    very likely what it's choking on.
+
+
+-- 3. While you're there, confirm the column exists and its type:
+--
+--      select column_name, data_type
+--        from information_schema.columns
+--       where table_name = 'campaign_creator_links'
+--         and column_name like 'brand%';
