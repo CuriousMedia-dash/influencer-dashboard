@@ -30,7 +30,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   if (!RESEND_API_KEY) {
-    return new Response(JSON.stringify({ error: "RESEND_API_KEY is not configured" }), {
+    console.error("RESEND_API_KEY is not set on this function.");
+    return new Response(JSON.stringify({ error: "RESEND_API_KEY is not set on this function." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -61,6 +62,11 @@ serve(async (req) => {
       }
     }
 
+    console.log(
+      `Sending: ${toList.length > 0 ? "direct" : "bcc"}, ${chunks.length} batch(es), ` +
+        `${(attachments || []).length} attachment(s), replyTo=${replyTo || "none"}, from=${RESEND_FROM}`
+    );
+
     const results = [];
     for (const chunk of chunks) {
       const resp = await fetch("https://api.resend.com/emails", {
@@ -89,7 +95,11 @@ serve(async (req) => {
       });
       const body = await resp.json();
       if (!resp.ok) {
-        return new Response(JSON.stringify({ error: body }), {
+        // Resend's reason, in the logs as well as the response — most
+        // failures here are an unverified from-address or an attachment
+        // over the size limit.
+        console.error("Resend rejected the mail:", JSON.stringify(body));
+        return new Response(JSON.stringify({ error: body?.message || JSON.stringify(body) }), {
           status: resp.status,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -101,6 +111,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    console.error("send-acquisition-mail failed:", String(err));
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

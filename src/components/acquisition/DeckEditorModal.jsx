@@ -3,6 +3,7 @@ import { Download, Send, Upload, Trash2, FileText, AlertCircle } from "lucide-re
 import Modal from "../ui/Modal";
 import { supabase } from "../../lib/supabaseClient";
 import { useToast } from "../../hooks/useToast";
+import { getFunctionErrorMessage } from "../../utils/functionError";
 import { useAuth } from "../../hooks/useAuth";
 import {
   fetchDecks,
@@ -141,10 +142,13 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
       const replyTo = user?.email || undefined;
 
       if (sendMode === "bcc") {
-        const { error } = await supabase.functions.invoke("send-acquisition-mail", {
+        const { data, error } = await supabase.functions.invoke("send-acquisition-mail", {
           body: { bcc: recipientEmails, subject, html, attachments, replyTo },
         });
-        if (error) throw error;
+        // The function explains itself in the response body; without
+        // reading it you only get "non-2xx status code", which says
+        // nothing about what to fix.
+        if (error || data?.error) throw new Error(await getFunctionErrorMessage(error, data));
         showToast(
           `Sent one mail to ${recipientEmails.length} creator${recipientEmails.length === 1 ? "" : "s"} in BCC.`,
           true
@@ -161,10 +165,10 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
         const email = recipientEmails[i];
         setProgress({ done: i, total: recipientEmails.length });
         try {
-          const { error } = await supabase.functions.invoke("send-acquisition-mail", {
+          const { data, error } = await supabase.functions.invoke("send-acquisition-mail", {
             body: { to: [email], subject, html, attachments, replyTo },
           });
-          if (error) throw error;
+          if (error || data?.error) throw new Error(await getFunctionErrorMessage(error, data));
           sent += 1;
         } catch (err) {
           console.error(`Failed to send to ${email}:`, err);
@@ -186,7 +190,7 @@ export default function DeckEditorModal({ open, onClose, recipients, categories,
       if (failed.length === 0) onClose();
     } catch (err) {
       console.error("Failed to send mail:", err);
-      showToast("Failed to send — check the send-acquisition-mail function logs.", false);
+      showToast(`Couldn't send: ${err.message}`, false);
     } finally {
       setSending(false);
       setProgress(null);
